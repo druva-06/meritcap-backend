@@ -32,5 +32,5 @@ jobs:
         # Build and push the Docker image with the new version tag
         docker build -t druva28/cap:$CURRENT_VERSION .
         docker push druva28/cap:$CURRENT_VERSION
-        docker tag druva28/cap:$CURRENT_VERSION druva28/cap-web:latest
+        docker tag druva28/cap:$CURRENT_VERSION druva28/cap:latest
         docker push druva28/cap:latest
