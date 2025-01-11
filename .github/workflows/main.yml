@@ -1,0 +1,36 @@
+name: Deploy CAP Backend
+
+on:
+  push:
+    branches:
+    - release/*
+
+jobs:
+  my_job:
+    name: Deploy to server
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker
+      uses: docker/setup-buildx-action@v1
+
+    - name: Log in to Docker Hub
+      env:
+        DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+        DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      run: |
+        echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+
+    - name: Build and push Docker Image
+      run: |
+        # Read the current version
+        CURRENT_VERSION=$(cat version.txt)
+
+        # Build and push the Docker image with the new version tag
+        docker build -t druva28/cap:$CURRENT_VERSION .
+        docker push druva28/cap:$CURRENT_VERSION
+        docker tag druva28/cap:$CURRENT_VERSION druva28/cap-web:latest
+        docker push druva28/cap:latest
