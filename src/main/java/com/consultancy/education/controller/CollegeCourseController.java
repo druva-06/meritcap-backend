@@ -1,23 +1,18 @@
 package com.consultancy.education.controller;
 
-import com.consultancy.education.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
-import com.consultancy.education.DTOs.requestDTOs.search.SearchRequestDto;
+import com.consultancy.education.DTOs.requestDTOs.search.SearchCourseRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.collegeCourse.CollegeCourseResponseDto;
-import com.consultancy.education.DTOs.responseDTOs.search.SearchResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.search.SearchCourseResponseDto;
 import com.consultancy.education.exception.NotFoundException;
 import com.consultancy.education.response.ApiFailureResponse;
 import com.consultancy.education.response.ApiSuccessResponse;
 import com.consultancy.education.service.CollegeCourseService;
-import com.consultancy.education.utils.ToMap;
-import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
-import java.util.List;
 
 @RestController
 @RequestMapping("/college-course")
@@ -43,10 +38,10 @@ public class CollegeCourseController {
     }
 
     @GetMapping("/collegeCourses")
-    public ResponseEntity<?> getCollegeCourses(@RequestBody SearchRequestDto searchRequestDto) {
+    public ResponseEntity<?> getCollegeCourses(@RequestBody SearchCourseRequestDto searchCourseRequestDto) {
         try{
-            SearchResponseDto<CollegeCourseResponseDto> searchResponseDto = collegeCourseService.getCollegeCourses(searchRequestDto);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(searchResponseDto, "College courses fetched successfully", 200));
+            SearchCourseResponseDto<CollegeCourseResponseDto> searchCourseResponseDto = collegeCourseService.getCollegeCourses(searchCourseRequestDto);
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(searchCourseResponseDto, "College courses fetched successfully", 200));
         }
         catch (NotFoundException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));

@@ -12,7 +12,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class SearchResponseDto<T> {
+public class SearchCourseResponseDto<T> {
     List<T> data;
     Pagination pagination;
 

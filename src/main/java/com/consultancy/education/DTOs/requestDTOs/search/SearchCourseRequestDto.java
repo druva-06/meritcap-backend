@@ -12,7 +12,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class SearchRequestDto {
+public class SearchCourseRequestDto {
     Pagination pagination;
     List<Sort> sort;
     Filters filters;
@@ -41,7 +41,8 @@ public class SearchRequestDto {
     @NoArgsConstructor
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class Filters {
-        String category;
+        List<Filter> filters;
+        List<String> countries;
         RatingFilter rating;
         DateRange dateAdded;
 
@@ -60,6 +61,16 @@ public class SearchRequestDto {
         public static class DateRange {
             String from;
             String to;
+        }
+
+        @Data
+        @AllArgsConstructor
+        @NoArgsConstructor
+        @FieldDefaults(level = AccessLevel.PRIVATE)
+        public static class Filter {
+            String table;
+            String column;
+            String value;
         }
     }
 

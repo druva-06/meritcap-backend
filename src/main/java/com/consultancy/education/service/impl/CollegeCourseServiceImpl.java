@@ -1,9 +1,9 @@
 package com.consultancy.education.service.impl;
 
 import com.consultancy.education.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
-import com.consultancy.education.DTOs.requestDTOs.search.SearchRequestDto;
+import com.consultancy.education.DTOs.requestDTOs.search.SearchCourseRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.collegeCourse.CollegeCourseResponseDto;
-import com.consultancy.education.DTOs.responseDTOs.search.SearchResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.search.SearchCourseResponseDto;
 import com.consultancy.education.enums.GraduationLevel;
 import com.consultancy.education.helper.ExcelHelper;
 import com.consultancy.education.model.College;
@@ -14,8 +14,6 @@ import com.consultancy.education.repository.CollegeRepository;
 import com.consultancy.education.repository.CourseRepository;
 import com.consultancy.education.service.CollegeCourseService;
 import com.consultancy.education.transformer.CollegeCourseTransformer;
-import com.consultancy.education.utils.FormatConverter;
-import com.consultancy.education.utils.PatternConvert;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -84,21 +82,8 @@ public class CollegeCourseServiceImpl implements CollegeCourseService {
     }
 
     @Override
-    public SearchResponseDto<CollegeCourseResponseDto> getCollegeCourses(SearchRequestDto searchRequestDto) {
-        List<Object[]> results = collegeCourseRepository.searchCollegeCourse(searchRequestDto.getSearch().getTerm());
-        System.out.println(searchRequestDto.getSearch().getTerm());
-        List<CollegeCourseResponseDto> collegeCourseResponseDtos = new ArrayList<>();
-        for (Object[] row : results) {
-            Long collegeCourseId = (Long) row[0];
-            Long collegeId = (Long) row[1];
-            Long courseId = (Long) row[2];
-            String collegeName = row[3].toString();
-            String courseName = row[4].toString();
-            collegeCourseResponseDtos.add(new CollegeCourseResponseDto(collegeCourseId, collegeId, courseId, collegeName, courseName));
-        }
-        SearchResponseDto<CollegeCourseResponseDto> searchResponseDto = new SearchResponseDto<>();
-        searchResponseDto.setData(collegeCourseResponseDtos);
-        return searchResponseDto;
+    public SearchCourseResponseDto<CollegeCourseResponseDto> getCollegeCourses(SearchCourseRequestDto searchCourseRequestDto) {
+        return collegeCourseRepository.searchCollegeCourses(searchCourseRequestDto);
     }
 
 //    @Override
