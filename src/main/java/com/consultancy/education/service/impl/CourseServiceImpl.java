@@ -1,5 +1,6 @@
 package com.consultancy.education.service.impl;
 
+import com.consultancy.education.DTOs.requestDTOs.college.CollegeRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.course.CourseRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.course.CourseResponseDto;
 import com.consultancy.education.exception.AlreadyExistException;
@@ -12,8 +13,11 @@ import com.consultancy.education.service.CourseService;
 import com.consultancy.education.transformer.CourseTransformer;
 import com.consultancy.education.utils.PatternConvert;
 import com.consultancy.education.validations.CourseValidations;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
@@ -22,6 +26,9 @@ import java.util.Objects;
 
 @Service
 public class CourseServiceImpl implements CourseService {
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private final CourseRepository courseRepository;
 
@@ -104,31 +111,65 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    @Transactional
     public String bulkCoursesUpload(MultipartFile file) {
-        int updatedCourseCount = 0;
-        int newCourseCount = 0;
-        try{
-            List<Course> courseList = ExcelHelper.convertCourseExcelIntoList(file.getInputStream());
-            for (Course course : courseList) {
-                Course existingCourse =  courseRepository.findByNameAndDepartmentAndGraduationLevel(course.getName(),  course.getDepartment(), course.getGraduationLevel());
-                if(existingCourse != null){
-                    if(CourseValidations.validateCourseData(existingCourse, course)){
-                        continue;
-                    }
-                    CourseTransformer.updateCourseDetailsEntityToEntity(existingCourse, course);
-                    courseRepository.save(existingCourse);
-                    updatedCourseCount++;
-                }
-                else{
-                    courseRepository.save(course);
-                    newCourseCount++;
+        try {
+            List<CourseRequestDto> courses = ExcelHelper.convertCourseExcelIntoList(file.getInputStream());
+
+            if (courses.isEmpty()) {
+                return "No courses to upload";
+            }
+
+            // SQL Query Template
+            String sql = """
+                INSERT INTO courses (
+                    name, department, graduation_level, specialization, created_at, updated_at
+                ) VALUES %s
+                ON DUPLICATE KEY UPDATE 
+                    specialization = VALUES(specialization), 
+                    updated_at = NOW()
+            """;
+
+            StringBuilder values = new StringBuilder();
+            int batchSize = 1000;
+            int count = 0;
+            List<String> batchQueries = new ArrayList<>();
+
+            for (CourseRequestDto course : courses) {
+                values.append(String.format(
+                        "('%s', '%s', '%s', %s, NOW(), NOW()),",
+                        escapeSqlString(course.getName()),
+                        escapeSqlString(course.getDepartment()),
+                        escapeSqlString(course.getGraduationLevel().name()), // ENUM stored as String
+                        (course.getSpecialization() != null ? "'" + escapeSqlString(course.getSpecialization()) + "'" : "NULL")
+                ));
+
+                count++;
+                if (count % batchSize == 0) {
+                    batchQueries.add(String.format(sql, values.substring(0, values.length() - 1)));
+                    values.setLength(0);
                 }
             }
-        }
-        catch (Exception e){
-            throw new DatabaseException(e.getMessage());
-        }
-        return "Created Courses Count : " + newCourseCount + " & Updated Courses Count : " + updatedCourseCount;
 
+            // Add remaining batch
+            if (!values.isEmpty()) {
+                batchQueries.add(String.format(sql, values.substring(0, values.length() - 1)));
+            }
+
+            // Execute batch queries
+            for (String batchQuery : batchQueries) {
+                entityManager.createNativeQuery(batchQuery).executeUpdate();
+            }
+
+            return "Courses Uploaded Successfully!";
+
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Bulk Insert/Update failed!", e);
+        }
+    }
+
+    private String escapeSqlString(String input) {
+        return input.replace("'", "''");
     }
 }

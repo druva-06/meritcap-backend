@@ -15,7 +15,6 @@ public class CourseTransformer {
                 .department(courseRequestDto.getDepartment())
                 .graduationLevel(courseRequestDto.getGraduationLevel())
                 .specialization(courseRequestDto.getSpecialization())
-                .description(courseRequestDto.getDescription())
                 .build();
     }
 
@@ -26,7 +25,6 @@ public class CourseTransformer {
                 .department(course.getDepartment())
                 .graduationLevel(course.getGraduationLevel())
                 .specialization(course.getSpecialization())
-                .description(course.getDescription())
                 .build();
     }
 
@@ -43,11 +41,9 @@ public class CourseTransformer {
         course.setDepartment(courseRequestDto.getDepartment());
         course.setGraduationLevel(courseRequestDto.getGraduationLevel());
         course.setSpecialization(courseRequestDto.getSpecialization());
-        course.setDescription(courseRequestDto.getDescription());
     }
 
     public static void updateCourseDetailsEntityToEntity(Course existingCourse, Course course) {
-        existingCourse.setDescription(course.getDescription());
         existingCourse.setSpecialization(course.getSpecialization());
     }
 }

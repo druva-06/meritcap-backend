@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "courses")
+@Table(name = "courses", uniqueConstraints = @UniqueConstraint(columnNames = {"name", "department", "graduation_level"}))
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -34,9 +34,6 @@ public class Course {
 
     @Column(name = "specialization")
     String specialization;
-
-    @Column(name = "description")
-    String description;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     LocalDateTime createdAt;

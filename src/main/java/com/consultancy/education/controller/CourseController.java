@@ -49,7 +49,7 @@ public class CourseController {
     public ResponseEntity<?> bulkCourseUpload(@RequestParam("file") MultipartFile file){
         if(ExcelHelper.checkExcelFormat(file)) {
             try{
-                return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(courseService.bulkCoursesUpload(file), "Courses uploaded successfully", 201));
+                return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(courseService.bulkCoursesUpload(file), "Success!", 201));
             }
             catch (Exception e){
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));

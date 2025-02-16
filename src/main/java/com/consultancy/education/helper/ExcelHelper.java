@@ -1,6 +1,8 @@
 package com.consultancy.education.helper;
 
+import com.consultancy.education.DTOs.requestDTOs.college.CollegeRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
+import com.consultancy.education.DTOs.requestDTOs.course.CourseRequestDto;
 import com.consultancy.education.enums.GraduationLevel;
 import com.consultancy.education.exception.ExcelException;
 import com.consultancy.education.model.College;
@@ -14,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ExcelHelper {
 
@@ -122,64 +125,6 @@ public class ExcelHelper {
         return collegeCourseRequestExcelDtos;
     }
 
-    public static List<Course> convertCourseExcelIntoList(InputStream inputStream) throws Exception {
-        List<Course> courseArrayList = new ArrayList<>();
-
-        try{
-            XSSFWorkbook workbook = new XSSFWorkbook(inputStream);
-            for(int i=0; i< workbook.getNumberOfSheets(); i++){
-                XSSFSheet sheet = workbook.getSheetAt(i);
-                Iterator<Row> courses = sheet.iterator();
-                int row = 0;
-                while(courses.hasNext()){
-                    Row courseRow = courses.next();
-                    if(row == 0){
-                        row++;
-                        continue;
-                    }
-                    row++;
-                    Course course = getCourse(courseRow);
-                    courseArrayList.add(course);
-                }
-            }
-        }
-        catch (Exception e){
-            throw new ExcelException(e.getMessage());
-        }
-
-        return courseArrayList;
-    }
-
-    private static Course getCourse(Row courseRow) {
-        BasicValidations basicValidations = new BasicValidations();
-        int col = 0;
-        Course course = new Course();
-        for (Cell cell : courseRow) {
-            cell = courseRow.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-            switch (col){
-                case 0:
-                    course.setName(basicValidations.validateString(cell));
-                    break;
-                case 1:
-                    course.setSpecialization(basicValidations.validateString(cell));
-                    break;
-                case 2:
-                    course.setDepartment(basicValidations.validateString(cell));
-                    break;
-                case 3:
-                    course.setGraduationLevel(GraduationLevel.valueOf(basicValidations.validateString(cell).toUpperCase()));
-                    break;
-                case 4:
-                    course.setDescription(basicValidations.validateString(cell));
-                    break;
-                default:
-                    break;
-            }
-            col++;
-        }
-        return course;
-    }
-
     private static CollegeCourseRequestExcelDto getCollegeCourse(Row collegeRow) {
         BasicValidations basicValidations = new BasicValidations();
         CollegeCourseRequestExcelDto collegeCourseRequestExcelDto = new CollegeCourseRequestExcelDto();
@@ -281,5 +226,62 @@ public class ExcelHelper {
             }
         }
         return collegeCourseRequestExcelDto;
+    }
+
+    public static List<CourseRequestDto> convertCourseExcelIntoList(InputStream inputStream) throws Exception {
+
+        List<CourseRequestDto> uniqueCourses = new ArrayList<>();
+
+        try{
+            XSSFWorkbook workbook = new XSSFWorkbook(inputStream);
+            XSSFSheet sheet = workbook.getSheetAt(0);
+            Iterator<Row> courses = sheet.iterator();
+            List<CourseRequestDto> courseArrayList = new ArrayList<>();
+            int row = 0;
+            while(courses.hasNext()){
+                Row courseRow = courses.next();
+                if(row == 0){
+                    row++;
+                    continue;
+                }
+                row++;
+                CourseRequestDto course = getCourse(courseRow);
+                courseArrayList.add(course);
+            }
+
+            uniqueCourses = courseArrayList.stream().distinct().toList();
+        }
+        catch (Exception e){
+            throw new ExcelException(e.getMessage());
+        }
+
+        return uniqueCourses;
+    }
+
+    private static CourseRequestDto getCourse(Row courseRow) {
+        BasicValidations basicValidations = new BasicValidations();
+        int col = 0;
+        CourseRequestDto course = new CourseRequestDto();
+        for (Cell cell : courseRow) {
+            cell = courseRow.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+            switch (col){
+                case 10:
+                    course.setName(basicValidations.validateString(cell));
+                    break;
+                case 11:
+                    course.setSpecialization(basicValidations.validateString(cell));
+                    break;
+                case 12:
+                    course.setDepartment(basicValidations.validateString(cell));
+                    break;
+                case 13:
+                    course.setGraduationLevel(GraduationLevel.valueOf(basicValidations.validateString(cell).toUpperCase()));
+                    break;
+                default:
+                    break;
+            }
+            col++;
+        }
+        return course;
     }
 }

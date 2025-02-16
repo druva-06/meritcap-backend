@@ -6,8 +6,7 @@ import java.util.Objects;
 public class CourseValidations {
     public static Boolean validateCourseData(Course existingCourse, Course course){
         if (existingCourse != null && course != null) {
-            return Objects.equals(existingCourse.getDescription(), course.getDescription()) &&
-                    Objects.equals(existingCourse.getSpecialization(), course.getSpecialization());
+            return Objects.equals(existingCourse.getSpecialization(), course.getSpecialization());
         }
 
         return false;
