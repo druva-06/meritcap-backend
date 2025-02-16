@@ -45,9 +45,9 @@ public class FormatConverter {
     }
 
     public static Double cnvrtPercentageToDouble(String percentage){
-        percentage = percentage.replace("%", "").trim();
         double percentageDouble;
         try {
+            percentage = percentage.replace("%", "").trim();
             percentageDouble = Double.parseDouble(percentage);
         }
         catch (Exception e) {

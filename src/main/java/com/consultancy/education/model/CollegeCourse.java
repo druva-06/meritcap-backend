@@ -41,7 +41,7 @@ public class CollegeCourse {
     @Column(name = "application_fee", columnDefinition = "TEXT")
     String applicationFee;
 
-    @Column(name = "tuition_fee")
+    @Column(name = "tuition_fee", columnDefinition = "TEXT")
     String tuitionFee;
 
     @Column(name = "ielts_min_score")

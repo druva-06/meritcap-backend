@@ -81,7 +81,6 @@ public class CollegeCourseServiceImpl implements CollegeCourseService {
             for (CollegeCourseRequestExcelDto dto : courseDtos) {
                 College college = collegeMap.get(dto.getCampusCode());
                 Course course = courseMap.get(dto.getCourseName() + "|" + dto.getDepartment() + "|" + dto.getGraduationLevel().toUpperCase());
-                System.out.println(course);
 
                 if (college != null && course != null) {
                     CollegeCourse newCourse = new CollegeCourse();
@@ -130,7 +129,7 @@ public class CollegeCourseServiceImpl implements CollegeCourseService {
 
     @Transactional
     public void batchInsert(List<CollegeCourse> courses) {
-        int batchSize = 1000;
+        int batchSize = 500;
         for (int i = 0; i < courses.size(); i++) {
             entityManager.persist(courses.get(i));
 
