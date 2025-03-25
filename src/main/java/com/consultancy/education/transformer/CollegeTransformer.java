@@ -42,10 +42,17 @@ public class CollegeTransformer {
 
     public static CollegeResponseDto toResDTO(College college){
         return CollegeResponseDto.builder()
-                .name(college.getName())
-                .id(college.getId())
-                .campus_code(college.getCampusCode())
-                .campus(college.getCampus())
+                .collegeId(college.getId())
+                .collegeName(college.getName())
+                .collegeName(college.getCampus())
+                .campusCode(college.getCampusCode())
+                .country(college.getCountry())
+                .collegeLogo(college.getCollegeLogo())
+                .websiteUrl(college.getWebsiteUrl())
+                .campusGalleryVideoLink(college.getCampusGalleryVideoLink())
+                .establishedYear(college.getEstablishedYear())
+                .ranking(college.getRanking())
+                .description(college.getDescription())
                 .build();
     }
 

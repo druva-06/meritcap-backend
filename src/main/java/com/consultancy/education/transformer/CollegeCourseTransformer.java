@@ -2,6 +2,9 @@ package com.consultancy.education.transformer;
 
 
 import com.consultancy.education.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
+import com.consultancy.education.DTOs.responseDTOs.college.CollegeResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.collegeCourse.CollegeCourseResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.course.CourseResponseDto;
 import com.consultancy.education.model.CollegeCourse;
 import com.consultancy.education.utils.FormatConverter;
 
@@ -45,21 +48,38 @@ public class CollegeCourseTransformer {
 //                .build();
 //    }
 //
-//    public static CollegeCourseResponseDto toResDto(CollegeCourse collegeCourse, Long collegeCourseId, String collegeName, String courseName) {
-//        return CollegeCourseResponseDto.builder()
-//                .collegeCourseId(collegeCourseId)
-//                .collegeName(collegeName)
-//                .courseName(courseName)
-//                //.intakeMonth(collegeCourse.getIntakeMonth())
-//                .intakeYear(collegeCourse.getIntakeYear())
-//                .tuitionFee(collegeCourse.getTuitionFee())
-//                .applicationFee(collegeCourse.getApplicationFee())
-//                .duration(collegeCourse.getDuration())
-//                .applicationDeadline(collegeCourse.getApplicationDeadline())
-//                .maxStudents(collegeCourse.getMaxStudents())
-//                .status(collegeCourse.getStatus())
-//                .build();
-//    }
+    public static CollegeCourseResponseDto toResDto(CollegeCourse collegeCourse, CollegeResponseDto collegeResponseDto, CourseResponseDto courseResponseDto) {
+        return CollegeCourseResponseDto.builder()
+                .college(collegeResponseDto)
+                .course(courseResponseDto)
+                .collegeCourseId(collegeCourse.getId())
+                .courseUrl(collegeCourse.getCourseUrl())
+                .tuitionFee(collegeCourse.getTuitionFee())
+                .applicationFee(collegeCourse.getApplicationFee())
+                .duration(collegeCourse.getDuration())
+                .backlogAcceptanceRange(collegeCourse.getBacklogAcceptanceRange())
+                .eligibilityCriteria(collegeCourse.getEligibilityCriteria())
+                .intakeYear(collegeCourse.getIntakeYear())
+                .intakeMonths(collegeCourse.getIntakeMonths())
+                .remarks(collegeCourse.getRemarks())
+                .scholarshipEligible(collegeCourse.getScholarshipEligible())
+                .scholarshipDetails(collegeCourse.getScholarshipDetails())
+                .min10thScore(collegeCourse.getMin10thScore())
+                .minInterScore(collegeCourse.getMinInterScore())
+                .minGraduationScore(collegeCourse.getMinGraduationScore())
+                .toeflMinScore(collegeCourse.getToeflMinScore())
+                .toeflMinBandScore(collegeCourse.getToeflMinBandScore())
+                .pteMinScore(collegeCourse.getPteMinScore())
+                .pteMinBandScore(collegeCourse.getPteMinBandScore())
+                .ieltsMinScore(collegeCourse.getIeltsMinScore())
+                .ieltsMinBandScore(collegeCourse.getIeltsMinBandScore())
+                .satMinScore(collegeCourse.getSatMinScore())
+                .greMinScore(collegeCourse.getGreMinScore())
+                .gmatMinScore(collegeCourse.getGmatMinScore())
+                .detMinScore(collegeCourse.getDetMinScore())
+                .catMinScore(collegeCourse.getCatMinScore())
+                .build();
+    }
 //
 //    public static List<CollegeCourseResponseDto> toResDto(List<CollegeCourse> collegeCourses) {
 //        List<CollegeCourseResponseDto> collegeCourseResponseDtos = new ArrayList<>();

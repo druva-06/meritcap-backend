@@ -10,6 +10,8 @@ public interface CollegeCourseService {
 
     SearchCourseResponseDto<CollegeCourseResponseDto> getCollegeCourses(SearchCourseRequestDto searchCourseRequestDto);
 
+    CollegeCourseResponseDto getCollegeCourseDetail(Long collegeCourseId);
+
 //    CollegeCourseResponseDto addCollegeCourse(CollegeCourseRequestExcelDto collegeCourseRequestExcelDto, Long collegeId, Long courseId);
 //
 //    CollegeCourseResponseDto updateCollegeCourse(@Valid CollegeCourseRequestExcelDto collegeCourseRequestExcelDto, Long collegeCourseId);

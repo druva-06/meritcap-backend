@@ -2,11 +2,14 @@ package com.consultancy.education.service.impl;
 
 import com.consultancy.education.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
 import com.consultancy.education.DTOs.requestDTOs.search.SearchCourseRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.college.CollegeResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.collegeCourse.CollegeCourseResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.course.CourseResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.currency.CurrencyResponseDTO;
 import com.consultancy.education.DTOs.responseDTOs.search.SearchCourseResponseDto;
 import com.consultancy.education.api.CurrencyAPIService;
 import com.consultancy.education.enums.GraduationLevel;
+import com.consultancy.education.exception.NotFoundException;
 import com.consultancy.education.helper.ExcelHelper;
 import com.consultancy.education.model.College;
 import com.consultancy.education.model.CollegeCourse;
@@ -16,6 +19,8 @@ import com.consultancy.education.repository.CollegeRepository;
 import com.consultancy.education.repository.CourseRepository;
 import com.consultancy.education.service.CollegeCourseService;
 import com.consultancy.education.transformer.CollegeCourseTransformer;
+import com.consultancy.education.transformer.CollegeTransformer;
+import com.consultancy.education.transformer.CourseTransformer;
 import com.consultancy.education.utils.FormatConverter;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -147,9 +152,28 @@ public class CollegeCourseServiceImpl implements CollegeCourseService {
 
     @Override
     public SearchCourseResponseDto<CollegeCourseResponseDto> getCollegeCourses(SearchCourseRequestDto searchCourseRequestDto) {
-//        Mono<CurrencyResponseDTO> currencyResponseDTO = currencyAPIService.fetchData().map(response ->  response);
-//        System.out.println(currencyResponseDTO);
         return collegeCourseRepository.searchCollegeCourses(searchCourseRequestDto);
+    }
+
+    @Override
+    public CollegeCourseResponseDto getCollegeCourseDetail(Long collegeCourseId) {
+        if (collegeCourseRepository.findById(collegeCourseId).isPresent()) {
+            CollegeCourse collegeCourse = collegeCourseRepository.findById(collegeCourseId).get();
+            College college = collegeCourse.getCollege();
+            Course course = collegeCourse.getCourse();
+            if(college == null) {
+                throw new NotFoundException("College not found!");
+            }
+            else if(course == null) {
+                throw new NotFoundException("Course not found!");
+            }
+            else{
+                CollegeResponseDto collegeResponseDto = CollegeTransformer.toResDTO(college);
+                CourseResponseDto courseResponseDto = CourseTransformer.toResDTO(course);
+                return CollegeCourseTransformer.toResDto(collegeCourse, collegeResponseDto, courseResponseDto);
+            }
+        }
+        throw new NotFoundException("College course not found!");
     }
 
 //    @Override

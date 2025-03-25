@@ -51,6 +51,20 @@ public class CollegeCourseController {
         }
     }
 
+    @GetMapping("/collegeCourseDetail/{collegeCourseId}")
+    public ResponseEntity<?> getCollegeCourseDetail(@PathVariable Long collegeCourseId) {
+        try{
+            CollegeCourseResponseDto collegeCourseResponseDto = collegeCourseService.getCollegeCourseDetail(collegeCourseId);
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeCourseResponseDto, "College course detail fetched successfully", 200));
+        }
+        catch (NotFoundException e){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        }
+        catch (Exception e){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
 //    @PutMapping("/update/{collegeCourseId}")
 //    public ResponseEntity<?> updateCollegeCourse(@RequestBody @Valid CollegeCourseRequestExcelDto collegeCourseRequestExcelDto, BindingResult bindingResult, @PathVariable Long collegeCourseId){
 //        if (bindingResult.hasErrors()) {
