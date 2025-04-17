@@ -1,5 +1,6 @@
 package com.consultancy.education.DTOs.responseDTOs.userAuth;
 
+import com.consultancy.education.DTOs.responseDTOs.user.UserResponseDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -31,12 +32,6 @@ public class UserAuthLoginResponseDto {
     @Schema(description = "Expiration time of the token in seconds", example = "3600")
     Integer expiresIn;
 
-    @Schema(description = "The username of the authenticated user", example = "johndoe")
-    String username;
-
-    @Schema(description = "The email address of the authenticated user", example = "johndoe@example.com")
-    String email;
-
-    @Schema(description = "The role of the user as stored in Cognito (e.g., ADMIN, STUDENT)", example = "ADMIN")
-    String role;
+    @Schema(description = "User response DTO containing user details")
+    UserResponseDto user;
 }

@@ -1,10 +1,22 @@
 package com.consultancy.education.transformer;
 
-import com.consultancy.education.DTOs.requestDTOs.user.UserRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.consultancy.education.model.User;
 
 public class UserTransformer {
+    public static void intoUserAuthLoginRes(User user, UserAuthLoginResponseDto userAuthLoginResponseDto) {
+        UserResponseDto userResponseDto = new UserResponseDto();
+        userResponseDto.setUserId(user.getId());
+        userResponseDto.setEmail(user.getEmail());
+        userResponseDto.setFirstName(user.getFirstName());
+        userResponseDto.setLastName(user.getLastName());
+        userResponseDto.setPhoneNumber(user.getPhoneNumber());
+        userResponseDto.setUsername(user.getUsername());
+        userResponseDto.setRole(user.getRole());
+        userResponseDto.setProfilePicture(user.getProfilePicture());
+        userAuthLoginResponseDto.setUser(userResponseDto);
+    }
 
 //    public static User toEntity(UserRequestDto userRequestDto) {
 //        return User.builder()

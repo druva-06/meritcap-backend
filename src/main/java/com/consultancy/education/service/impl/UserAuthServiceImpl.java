@@ -1,5 +1,7 @@
 package com.consultancy.education.service.impl;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthLoginRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
@@ -9,6 +11,7 @@ import com.consultancy.education.model.User;
 import com.consultancy.education.repository.UserRepository;
 import com.consultancy.education.service.UserAuthService;
 import com.consultancy.education.transformer.UserAuthTransformer;
+import com.consultancy.education.transformer.UserTransformer;
 import com.consultancy.education.utils.CognitoUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -111,7 +114,15 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         try {
             InitiateAuthResponse authResponse = cognitoClient.initiateAuth(authRequest);
-            return UserAuthTransformer.toLoginResDto(authResponse);
+            userAuthLoginResponseDto =  UserAuthTransformer.toLoginResDto(authResponse);
+            DecodedJWT jwt = JWT.decode(userAuthLoginResponseDto.getIdToken());
+            String email = jwt.getClaim("email").asString();
+            if(email == null){
+                throw new CustomException("Invalid JWT Token.");
+            }
+            User user = userRepository.findByEmail(email);
+            UserTransformer.intoUserAuthLoginRes(user, userAuthLoginResponseDto);
+            return userAuthLoginResponseDto;
         }
         catch (CognitoIdentityProviderException e){
             String errorMessage = e.awsErrorDetails().errorMessage();

@@ -1,6 +1,5 @@
 package com.consultancy.education.transformer;
 
-import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthLoginRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.consultancy.education.model.User;
@@ -11,6 +10,7 @@ import software.amazon.awssdk.services.cognitoidentityprovider.model.InitiateAut
 public class UserAuthTransformer {
     public static UserAuthLoginResponseDto toLoginResDto(InitiateAuthResponse authResponse) {
         log.info("UserAuthTransformer toLoginResDto");
+
         return UserAuthLoginResponseDto.builder()
                 .accessToken(authResponse.authenticationResult().accessToken())
                 .idToken(authResponse.authenticationResult().idToken())
