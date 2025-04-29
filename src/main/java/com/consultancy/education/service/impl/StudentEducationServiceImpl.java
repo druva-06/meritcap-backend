@@ -25,9 +25,9 @@ public class StudentEducationServiceImpl implements StudentEducationService {
     }
 
     @Override
-    public StudentEducationResponseDto addStudentEducation(StudentEducationRequestDto studentEducationRequestDto, Long studentId) {
-        if(studentRepository.findById(studentId).isPresent()){
-            Student student = studentRepository.findById(studentId).get();
+    public StudentEducationResponseDto addStudentEducation(StudentEducationRequestDto studentEducationRequestDto, Long userId) {
+        Student student = studentRepository.findByUserId(userId);
+        if(student != null){
             StudentEducation studentEducation = StudentEducationTransformer.toEntity(studentEducationRequestDto);
             studentEducation.setStudent(student);
             student.getStudentEducations().add(studentEducation);
@@ -50,9 +50,9 @@ public class StudentEducationServiceImpl implements StudentEducationService {
     }
 
     @Override
-    public List<StudentEducationResponseDto> getStudentEducation(Long studentId) {
-        if(studentRepository.findById(studentId).isPresent()){
-            Student student = studentRepository.findById(studentId).get();
+    public List<StudentEducationResponseDto> getStudentEducation(Long userId) {
+        Student student = studentRepository.findByUserId(userId);
+        if(student != null){
             List<StudentEducation> studentEducations = student.getStudentEducations();
             return StudentEducationTransformer.toResDTO(studentEducations, student);
         }

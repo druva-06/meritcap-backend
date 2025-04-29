@@ -15,6 +15,8 @@ aws:
     clientId: 1l642vjbnc4qfflhlfrt1sbbcl
     clientSecret: 1mdallivtrvo4ap97u7597vdiqdcm3cbekaqiv7m8f0dbtuoom7g
   region: ap-south-2
+  s3:
+    bucketName: career-adivce-partner
 
 logging:
   level:

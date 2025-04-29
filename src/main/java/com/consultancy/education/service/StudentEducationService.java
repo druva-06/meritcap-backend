@@ -8,9 +8,9 @@ import java.util.List;
 
 public interface StudentEducationService {
 
-    StudentEducationResponseDto addStudentEducation(StudentEducationRequestDto studentEducationRequestDto, Long studentId);
+    StudentEducationResponseDto addStudentEducation(StudentEducationRequestDto studentEducationRequestDto, Long userId);
 
     StudentEducationResponseDto updateStudentEducation(StudentEducationRequestDto studentEducationRequestDto, Long studentEducationId);
 
-    List<StudentEducationResponseDto> getStudentEducation(Long studentId);
+    List<StudentEducationResponseDto> getStudentEducation(Long userId);
 }

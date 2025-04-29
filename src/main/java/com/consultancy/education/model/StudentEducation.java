@@ -51,7 +51,7 @@ public class StudentEducation {
     @Column(name = "cgpa", nullable = false)
     Double cgpa;
 
-    @Column(name = "division", nullable = false)
+    @Column(name = "division")
     String division;
 
     @Column(name = "specialization", nullable = false)
@@ -60,7 +60,7 @@ public class StudentEducation {
     @Column(name = "backlogs", nullable = false)
     Integer backlogs;
 
-    @Column(name = "certificate", nullable = false)
+    @Column(name = "certificate")
     String certificate;
 
     @Column(name = "created_at", nullable = false, updatable = false)

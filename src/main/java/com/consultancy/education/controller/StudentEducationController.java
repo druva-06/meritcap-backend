@@ -27,12 +27,12 @@ public class StudentEducationController {
     }
 
     @PostMapping("/add")
-    public ResponseEntity<?> addStudentEducation(@RequestBody @Valid StudentEducationRequestDto studentEducationRequestDto, BindingResult bindingResult, @RequestParam Long studentId) {
+    public ResponseEntity<?> addStudentEducation(@RequestBody @Valid StudentEducationRequestDto studentEducationRequestDto, BindingResult bindingResult, @RequestParam Long userId) {
         if (bindingResult.hasErrors()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation Failed", 400));
         }
         try{
-            StudentEducationResponseDto studentEducationResponseDto = studentEducationService.addStudentEducation(studentEducationRequestDto, studentId);
+            StudentEducationResponseDto studentEducationResponseDto = studentEducationService.addStudentEducation(studentEducationRequestDto, userId);
             return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(studentEducationResponseDto, "Student education added successfully", 201));
         }
         catch (NotFoundException e){
@@ -61,10 +61,10 @@ public class StudentEducationController {
     }
 
     @GetMapping("/get")
-    public ResponseEntity<?> getStudentEducationById(@RequestParam Long studentId) {
+    public ResponseEntity<?> getStudentEducationById(@RequestParam Long userId) {
         try{
-            List<StudentEducationResponseDto> studentEducationResponseDtos = studentEducationService.getStudentEducation(studentId);
-            return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(studentEducationResponseDtos, "Student education fetched successfully", 201));
+            List<StudentEducationResponseDto> studentEducationResponseDtos = studentEducationService.getStudentEducation(userId);
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(studentEducationResponseDtos, "Student education fetched successfully", 200));
         }
         catch (NotFoundException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));

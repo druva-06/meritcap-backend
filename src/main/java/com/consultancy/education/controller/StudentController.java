@@ -4,6 +4,7 @@ import com.consultancy.education.DTOs.requestDTOs.student.StudentRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.student.StudentUpdateRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.student.StudentResponseDto;
 import com.consultancy.education.exception.AlreadyExistException;
+import com.consultancy.education.exception.CustomException;
 import com.consultancy.education.exception.ValidationException;
 import com.consultancy.education.response.ApiFailureResponse;
 import com.consultancy.education.response.ApiSuccessResponse;
@@ -35,13 +36,21 @@ public class StudentController {
         }
         try{
             StudentResponseDto studentResponseDto = studentService.addStudent(studentRequestDto);
-            return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(studentResponseDto, "Student created successfully", 201));
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(studentResponseDto, "Student details updated successfully", 200));
         }
-        catch (ValidationException e){
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(e.getErrors(), e.getMessage(), 400));
+        catch (Exception e){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
-        catch (AlreadyExistException e){
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiFailureResponse<>(e.getErrors(), e.getMessage(), 409));
+    }
+
+    @GetMapping("/get/{userId}")
+    public ResponseEntity<?> getStudent(@PathVariable Long userId) {
+        try{
+            StudentResponseDto studentResponseDto = studentService.getStudent(userId);
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(studentResponseDto, "Student details fetched successfully", 200));
+        }
+        catch (CustomException e){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiSuccessResponse<>(new ApiFailureResponse<>(), e.getMessage(), 404));
         }
         catch (Exception e){
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));

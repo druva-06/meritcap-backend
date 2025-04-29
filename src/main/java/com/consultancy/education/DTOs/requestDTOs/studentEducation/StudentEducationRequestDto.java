@@ -2,6 +2,10 @@ package com.consultancy.education.DTOs.requestDTOs.studentEducation;
 
 import com.consultancy.education.enums.GraduationLevel;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -13,6 +17,9 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Builder
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@Schema(description = "Student education request dto api request")
 public class StudentEducationRequestDto {
 
     @NotNull(message = "Education level is required")
@@ -55,7 +62,6 @@ public class StudentEducationRequestDto {
     @DecimalMax(value = "10.0", message = "CGPA cannot exceed 10")
     Double cgpa;
 
-    @NotBlank(message = "Division cannot be empty")
     @Size(max = 50, message = "Division must be less than 50 characters")
     String division;
 
@@ -67,6 +73,5 @@ public class StudentEducationRequestDto {
     @Min(value = 0, message = "Backlogs cannot be negative")
     Integer backlogs;
 
-    @NotBlank(message = "Certificate cannot be empty")
     String certificate;
 }

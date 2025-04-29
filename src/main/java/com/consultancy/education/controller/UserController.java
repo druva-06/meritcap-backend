@@ -14,14 +14,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 @RestController
 @RequestMapping("/user")
 public class UserController {
 
     private final UserService userService;
+    private static final List<String> ALLOWED_FILE_TYPES = Arrays.asList("application/pdf", "image/jpeg", "image/png", "image/jpg");
+
 
     public UserController(UserService userService) {
         this.userService = userService;
@@ -69,6 +76,29 @@ public class UserController {
         try{
             UserResponseDto responseDto = userService.getUser(userId);
             return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(responseDto, "User fetched successfully", 200));
+        }
+        catch (NotFoundException e){
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        }
+        catch (Exception e){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PostMapping("/uploadFile/{userId}/{documentType}")
+    public ResponseEntity<?> uploadFile(@PathVariable Long userId, @PathVariable String documentType,
+                             @RequestParam("file") MultipartFile file) {
+        try{
+            // Get the content type (MIME type) of the file
+            String contentType = file.getContentType();
+
+            // Check if the file's content type is in the allowed list
+            if(!ALLOWED_FILE_TYPES.contains(contentType)){
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(new ArrayList<>(), "Invalid file format", 400));
+            }
+
+            String response = userService.uploadFile(userId, documentType, file);
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(new ArrayList<>(), response, 200));
         }
         catch (NotFoundException e){
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));

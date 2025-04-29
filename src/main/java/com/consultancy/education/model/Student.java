@@ -42,20 +42,20 @@ public class Student {
     @Column(name = "alternate_phone_number")
     String alternatePhoneNumber;
 
-//    @Column(name = "profile_completion", nullable = false, columnDefinition = "INT DEFAULT 0")
-//    Integer profileCompletion;
-//
-//    @Column(name = "aadhaar_number", nullable = false, unique = true, length = 12)
-//    String aadhaarNumber;
-//
-//    @Column(name = "aadhaar_card_file", nullable = false)
-//    String aadhaarCardFile;
-//
-//    @Column(name = "passport_number", nullable = false, unique = true)
-//    String passportNumber;
-//
-//    @Column(name = "passport_file", nullable = false)
-//    String passportFile;
+    @Column(name = "profile_completion", nullable = false, columnDefinition = "INT DEFAULT 0")
+    Integer profileCompletion;
+
+    @Column(name = "aadhaar_card_file")
+    String aadhaarCardFile;
+
+    @Column(name = "passport_file")
+    String passportFile;
+
+    @Column(name = "pan_card_file")
+    String panCardFile;
+
+    @Column(name = "birth_certificate_file")
+    String birthCertificateFile;
 
     @JoinColumn
     @OneToOne

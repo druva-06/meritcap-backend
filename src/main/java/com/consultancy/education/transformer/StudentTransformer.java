@@ -3,39 +3,35 @@ package com.consultancy.education.transformer;
 import com.consultancy.education.DTOs.requestDTOs.student.StudentRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.student.StudentUpdateRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.student.StudentResponseDto;
+import com.consultancy.education.enums.ActiveStatus;
 import com.consultancy.education.model.Student;
 
 public class StudentTransformer {
 
-//    public static Student toEntity(StudentRequestDto studentRequestDto) {
-//        return Student.builder()
-//                .username(studentRequestDto.getUsername())
-//                .email(studentRequestDto.getEmail())
-//                .password(studentRequestDto.getPassword())
-//                .firstName(studentRequestDto.getFirstName())
-//                .lastName(studentRequestDto.getLastName())
-//                .phoneNumber(studentRequestDto.getPhoneNumber())
-//                .alternatePhoneNumber(studentRequestDto.getAlternatePhoneNumber())
-//                .dateOfBirth(studentRequestDto.getBirthDate())
-//                .gender(studentRequestDto.getGender())
-//                .graduationLevel(studentRequestDto.getGraduationLevel())
-//                .profileActiveStatus(studentRequestDto.getProfileActiveStatus())
-//                .profileCompletion(studentRequestDto.getProfileCompletion())
-//                .profileImage(studentRequestDto.getProfileImage())
-//                .aadhaarNumber(studentRequestDto.getAadhaarNumber())
-//                .aadhaarCardFile(studentRequestDto.getAadhaarCardFile())
-//                .passportNumber(studentRequestDto.getPassportNumber())
-//                .passportFile(studentRequestDto.getPassportFile())
-//                .build();
-//    }
-//
-//    public static StudentResponseDto toResDTO(Student student) {
-//        return StudentResponseDto.builder()
-//                .id(student.getId())
-//                .username(student.getUsername())
-//                .build();
-//    }
-//
+    public static void updateEntity(Student student, StudentRequestDto studentRequestDto) {
+        student.setAlternatePhoneNumber(studentRequestDto.getAlternatePhoneNumber());
+        student.setGender(studentRequestDto.getGender());
+        student.setDateOfBirth(studentRequestDto.getDateOfBirth());
+        student.setGraduationLevel(studentRequestDto.getGraduationLevel());
+        student.setProfileActiveStatus(ActiveStatus.ACTIVE);
+    }
+
+    public static StudentResponseDto toResDTO(Student student) {
+        return StudentResponseDto.builder()
+                .userId(student.getUser().getId())
+                .graduationLevel(student.getGraduationLevel())
+                .dateOfBirth(student.getDateOfBirth())
+                .alternatePhoneNumber(student.getAlternatePhoneNumber())
+                .gender(student.getGender())
+                .profileActiveStatus(student.getProfileActiveStatus())
+                .profileCompletion(student.getProfileCompletion())
+                .aadhaarCardFile(student.getAadhaarCardFile())
+                .birthCertificateFile(student.getBirthCertificateFile())
+                .panCardFile(student.getPanCardFile())
+                .passportFile(student.getPassportFile())
+                .build();
+    }
+
 //    public static void updateStudentDetails(Student student, StudentUpdateRequestDto studentRequestDto) {
 //        student.setUsername(studentRequestDto.getUsername());
 //        student.setEmail(studentRequestDto.getEmail());

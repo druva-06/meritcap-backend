@@ -4,6 +4,10 @@ import com.consultancy.education.enums.ActiveStatus;
 import com.consultancy.education.enums.Gender;
 import com.consultancy.education.enums.GraduationLevel;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -15,28 +19,13 @@ import java.time.LocalDate;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @Builder
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+@Schema(description = "Student request dto api request")
 public class StudentRequestDto {
 
-    @NotBlank(message = "Username is required.")
-    @Pattern(regexp = "^[a-zA-Z0-9_]+$", message = "Username must contain only alphanumeric characters and underscores")
-    String username;
-
-    @NotBlank(message = "Email is required.")
-    @Email(message = "Email should be valid.")
-    String email;
-
-    @NotBlank(message = "Password is required.")
-    String password;
-
-    @NotBlank(message = "First name is required.")
-    String firstName;
-
-    @NotBlank(message = "Last name is required.")
-    String lastName;
-
-    @NotBlank(message = "Phone number is required.")
-    @Pattern(regexp = "^\\d{10}$", message = "Phone number must be 10 digits.")
-    String phoneNumber;
+    @NotNull(message = "Student Id is required")
+    Long userId;
 
     @Pattern(regexp = "^\\d{10}$", message = "Alternate phone number must be 10 digits.")
     String alternatePhoneNumber;
@@ -44,31 +33,11 @@ public class StudentRequestDto {
     @NotNull(message = "Birth date is required.")
     @Past(message = "Birth date must be in the past.")
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "dd/MM/yyyy")
-    LocalDate birthDate;
+    LocalDate dateOfBirth;
 
     @NotNull(message = "Gender is required.")
     Gender gender;
 
     @NotNull(message = "Graduation level is required.")
     GraduationLevel graduationLevel;
-
-    @NotNull(message = "Profile active status is required.")
-    ActiveStatus profileActiveStatus;
-
-    @Min(value = 0, message = "Profile completion must be between 0 and 100.")
-    @Max(value = 100, message = "Profile completion must be between 0 and 100.")
-    Integer profileCompletion;
-
-    String profileImage;
-
-    @NotBlank(message = "Aadhaar number is required.")
-    @Pattern(regexp = "^\\d{12}$", message = "Aadhaar number must be 12 digits.")
-    String aadhaarNumber;
-
-    String aadhaarCardFile;
-
-    @NotBlank(message = "Passport number is required.")
-    String passportNumber;
-
-    String passportFile;
 }
