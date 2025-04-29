@@ -13,6 +13,7 @@ import com.consultancy.education.repository.UserRepository;
 import com.consultancy.education.service.UserService;
 import com.consultancy.education.transformer.UserTransformer;
 import com.consultancy.education.validations.UserValidations;
+import jakarta.annotation.PostConstruct;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,20 +41,32 @@ public class UserServiceImpl implements UserService {
     private static final Log log = LogFactory.getLog(UserServiceImpl.class);
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
-    private final S3Client s3Client;
-    private final String bucketName = "career-adivce-partner";
+    private S3Client s3Client;
+
+    @Value("${aws.s3.bucketName}")
+    private String bucketName;
+
+    @Value("${aws.s3.accessKeyId}")
+    private String accessKeyId;
+
+    @Value("${aws.s3.secretAccessKey}")
+    private String secretAccessKey;
 
     public UserServiceImpl(UserRepository userRepository, StudentRepository studentRepository) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
+    }
+
+    @PostConstruct
+    public void initS3Client() {
         this.s3Client = S3Client.builder()
-                .region(Region.AP_SOUTH_2) // Update with your region
-                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(
-                        "***REMOVED***",
-                        "***REMOVED***"
-                )))
+                .region(Region.AP_SOUTH_2)
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(accessKeyId, secretAccessKey)
+                ))
                 .build();
     }
+
     @Override
     public UserResponseDto addUser(UserRequestDto userRequestDto) {
 //        boolean existsByEmail = userRepository.existsByEmail(userRequestDto.getEmail());
