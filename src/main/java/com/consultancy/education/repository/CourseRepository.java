@@ -19,7 +19,7 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     List<Course> findByNameContainingIgnoreCase(String name, PageRequest of);
 
-    @Query("SELECT e FROM Course e WHERE LOWER(CONCAT(e.name, e.department)) LIKE LOWER(:input)")
+    @Query("SELECT e FROM Course e WHERE LOWER(e.name) LIKE LOWER(:input)")
     List<Course> searchByNameOrDepartment(@Param("input") String input, PageRequest of);
 
     Course findByNameAndDepartmentAndGraduationLevel(String name, String department, GraduationLevel graduationLevel);

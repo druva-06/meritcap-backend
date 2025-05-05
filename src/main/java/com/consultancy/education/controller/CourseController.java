@@ -111,8 +111,8 @@ public class CourseController {
         }
     }
 
-    @GetMapping("/getByName")
-    public ResponseEntity<?> getCourseByName(@RequestParam String name) {
+    @GetMapping("/get/{name}")
+    public ResponseEntity<?> getCourseByName(@PathVariable String name) {
         try {
             return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(courseService.getCourseByName(name), "Course fetched successfully", 200));
         }
