@@ -31,7 +31,7 @@ public class StudentEducationTransformer {
     public static StudentEducationResponseDto toResDTO(StudentEducation studentEducation, Student student) {
 
         return StudentEducationResponseDto.builder()
-                .studentId(student.getId())
+                .userId(student.getUser().getId())
                 .educationId(studentEducation.getId())
                 .educationLevel(studentEducation.getEducationLevel())
                 .institutionName(studentEducation.getInstitutionName())

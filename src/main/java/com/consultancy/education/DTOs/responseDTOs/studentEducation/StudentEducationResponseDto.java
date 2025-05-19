@@ -22,7 +22,7 @@ import java.time.LocalDate;
 public class StudentEducationResponseDto {
 
     @Schema(description = "Unique ID of the student", example = "101")
-    Long studentId;
+    Long userId;
 
     @Schema(description = "Unique ID of the education record", example = "202")
     Long educationId;
