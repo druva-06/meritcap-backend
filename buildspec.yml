@@ -3,30 +3,33 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo "Installing jq..."
-      - apt-get update
-      - apt-get install -y jq
       - echo "Fetching the PEM file from Secrets Manager"
-      - aws secretsmanager get-secret-value --secret-id cap/uat/credentials --query 'SecretString' --output text > /tmp/secret.json
-      - echo "Secret JSON:"
-      - cat /tmp/secret.json
-      - echo "Extracting PEM key..."
-      - jq -r '.["cap-uat-key-pair"]' /tmp/secret.json > /tmp/cap-uat-key-pair.pem
-      - ls -l /tmp/cap-uat-key-pair.pem
+      - aws secretsmanager get-secret-value --secret-id cap/uat/credentials --query 'SecretString' --output text | jq -r '.["cap-uat-key-pair"]' > /tmp/cap-uat-key-pair.pem
+      - ls -l /tmp/                          # Check if PEM file created
       - chmod 400 /tmp/cap-uat-key-pair.pem
+      - ls -l /tmp/cap-uat-key-pair.pem    # Verify permissions of PEM file
 
   build:
     commands:
       - echo "Building the project..."
       - mvn clean install
+      - echo "Listing contents of target directory:"
+      - ls -l target/                      # Check if JAR generated
 
   post_build:
     commands:
-      - echo "Copying JAR to EC2..."
-      - scp -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem target/*.jar ubuntu@18.61.21.68:/opt/cap/cap-backend-uat.jar
-      - echo "Running JAR on EC2..."
+      - echo "Checking SSH connectivity to EC2..."
+      - ssh -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem ubuntu@18.61.21.68 'echo SSH connection successful'
+      - echo "Listing /opt/cap directory on EC2 before copy:"
+      - ssh -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem ubuntu@18.61.21.68 'ls -l /opt/cap || echo "/opt/cap not found"'
+      - echo "Copying JAR to EC2 with verbose SCP..."
+      - scp -v -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem target/*.jar ubuntu@18.61.21.68:/opt/cap/cap-backend-uat.jar
+      - echo "Listing /opt/cap directory on EC2 after copy:"
+      - ssh -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem ubuntu@18.61.21.68 'ls -l /opt/cap'
+      - echo "Restarting the application on EC2..."
       - |
         ssh -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem ubuntu@18.61.21.68 << 'EOF'
           pkill -f "java -jar" || true
           nohup java -jar /opt/cap/cap-backend-uat.jar > /opt/cap/app.log 2>&1 &
+          echo "Application restarted"
         EOF
