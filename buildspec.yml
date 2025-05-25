@@ -4,8 +4,8 @@ phases:
   install:
     commands:
       - echo "Fetching the PEM file from Secrets Manager"
-      - aws secretsmanager get-secret-value --secret-id cap-dev-key-pair --query SecretString --output text > /tmp/cap-dev-key-pair.pem
-      - chmod 400 /tmp/cap-dev-key-pair.pem
+      - aws secretsmanager get-secret-value --secret-id cap/uat/credentials --query 'SecretString' --output text | jq -r '.["cap-uat-key-pair"]' > /tmp/cap-uat-key-pair.pem
+      - chmod 400 /tmp/cap-uat-key-pair.pem
 
   build:
     commands:
@@ -15,10 +15,10 @@ phases:
   post_build:
     commands:
       - echo "Copying JAR to EC2..."
-      - scp -o StrictHostKeyChecking=no -i /tmp/cap-dev-key-pair.pem target/*.jar ubuntu@18.61.21.68:/home/ubuntu/cap-backend-dev.jar
+      - scp -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem target/*.jar ubuntu@18.61.21.68:/opt/cap/cap-backend-uat.jar
       - echo "Running JAR on EC2..."
       - |
-        ssh -o StrictHostKeyChecking=no -i /tmp/cap-dev-key-pair.pem ubuntu@18.61.21.68 << 'EOF'
+        ssh -o StrictHostKeyChecking=no -i /tmp/cap-uat-key-pair.pem ubuntu@18.61.21.68 << 'EOF'
           pkill -f "java -jar" || true
-          nohup java -jar /home/ubuntu/cap-backend-dev.jar > /home/ubuntu/app.log 2>&1 &
+          nohup java -jar /opt/cap/cap-backend-uat.jar > /opt/cap/app.log 2>&1 &
         EOF
