@@ -4,17 +4,24 @@ phases:
   install:
     commands:
       - echo "Fetching the PEM file from Secrets Manager"
-      - aws secretsmanager get-secret-value --secret-id cap/uat/credentials --query 'SecretString' --output text | jq -r '.["cap-uat-key-pair"]' > /tmp/cap-uat-key-pair.pem
+      - |
+        aws secretsmanager get-secret-value --secret-id cap/uat/credentials --query 'SecretString' --output text | jq -r '.["cap-uat-key-pair"]' | awk '
+        BEGIN {print "-----BEGIN RSA PRIVATE KEY-----"}
+        {
+          for(i=1;i<=length;i+=64) print substr($0, i, 64)
+        }
+        END {print "-----END RSA PRIVATE KEY-----"}
+        ' > /tmp/cap-uat-key-pair.pem
       - ls -l /tmp/                          # Check if PEM file created
       - chmod 400 /tmp/cap-uat-key-pair.pem
-      - ls -l /tmp/cap-uat-key-pair.pem    # Verify permissions of PEM file
+      - ls -l /tmp/cap-uat-key-pair.pem      # Verify permissions of PEM file
 
   build:
     commands:
       - echo "Building the project..."
       - mvn clean install
       - echo "Listing contents of target directory:"
-      - ls -l target/                      # Check if JAR generated
+      - ls -l target/                        # Check if JAR generated
 
   post_build:
     commands:
