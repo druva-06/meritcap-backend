@@ -21,12 +21,10 @@ public class CourseRequestDto {
     @NotBlank(message = "Name is required")
     private String name;
 
-    @NotBlank(message = "Department is required")
     private String department;
 
     @NotNull(message = "Graduation level is required")
-    @Enumerated(EnumType.STRING)
-    private GraduationLevel graduationLevel;
+    private String graduationLevel;
 
     private String specialization;
 

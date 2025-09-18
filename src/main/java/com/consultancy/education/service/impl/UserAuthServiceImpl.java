@@ -49,6 +49,21 @@ public class UserAuthServiceImpl implements UserAuthService {
     public String signup(UserAuthSignUpRequestDto userAuthSignUpRequestDto) {
         log.info("Signup service started for email: {}", userAuthSignUpRequestDto.getEmail());
 
+        if(userRepository.findByEmail(userAuthSignUpRequestDto.getEmail())!=null){
+            log.error("Email Already Exists: {}", userAuthSignUpRequestDto.getEmail());
+            throw new CustomException("Email Already Exists");
+        }
+
+        if(userRepository.findByPhoneNumber(userAuthSignUpRequestDto.getPhoneNumber())!=null){
+            log.error("Phone Already Exists: {}", userAuthSignUpRequestDto.getPhoneNumber());
+            throw new CustomException("Phone Number Already Exists");
+        }
+
+        if(userRepository.findByUsername(userAuthSignUpRequestDto.getUsername())!=null){
+            log.error("Username Already Exists: {}", userAuthSignUpRequestDto.getUsername());
+            throw new CustomException("Username Already Exists");
+        }
+
         Map<String, AttributeType> attributes = new HashMap<>();
         attributes.put("email", AttributeType.builder().name("email").value(userAuthSignUpRequestDto.getEmail()).build());
         attributes.put("phone_number", AttributeType.builder().name("phone_number").value(userAuthSignUpRequestDto.getPhoneNumber()).build());

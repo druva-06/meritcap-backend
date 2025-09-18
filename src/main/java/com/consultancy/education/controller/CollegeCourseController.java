@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -33,18 +34,19 @@ public class CollegeCourseController {
         this.collegeCourseService = collegeCourseService;
     }
 
-    @PostMapping("/bulkCollegeCourseUpload")
-    public ResponseEntity<?> bulkCollegeCourseUpload(@RequestParam("file") MultipartFile file) {
-        try{
-            return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(collegeCourseService.bulkCollegeCourseUpload(file), "College courses added successfully", 201));
-        }
-        catch (NotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
-        }
-    }
+//    @PreAuthorize("hasAnyRole('ADMIN')")
+//    @PostMapping("/bulkCollegeCourseUpload")
+//    public ResponseEntity<?> bulkCollegeCourseUpload(@RequestParam("file") MultipartFile file) {
+//        try{
+//            return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(collegeCourseService.bulkCollegeCourseUpload(file), "College courses added successfully", 201));
+//        }
+//        catch (NotFoundException e){
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+//        }
+//        catch (Exception e){
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+//        }
+//    }
 
     @PostMapping("/collegeCourses")
     public ResponseEntity<?> getCollegeCourses(@RequestBody SearchCourseRequestDto searchCourseRequestDto) {

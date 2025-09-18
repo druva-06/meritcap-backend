@@ -31,5 +31,5 @@ public class CourseResponseDto {
     String specialization;
 
     @Schema(description = "Graduation level (e.g., UNDERGRADUATE, POSTGRADUATE, DIPLOMA)")
-    GraduationLevel graduationLevel;
+    String graduationLevel;
 }

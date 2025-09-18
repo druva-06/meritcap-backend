@@ -126,7 +126,7 @@ public class UserAuthController {
         try {
             String response = userAuthService.forgotPassword(email);
             log.info("Forgot password response: {}", response);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "Forgot password verification code successfully!", 200));
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "Forgot password verification code sent successfully!", 200));
         }
         catch (NotFoundException e){
             log.error("Cognito forgot password email not found");

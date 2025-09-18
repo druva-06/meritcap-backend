@@ -1,52 +1,30 @@
 package com.consultancy.education.DTOs.responseDTOs.college;
 
+import com.consultancy.education.enums.ActiveStatus;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.FieldDefaults;
+import java.time.LocalDateTime;
 
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE)
-@Builder
-@JsonInclude(JsonInclude.Include.NON_EMPTY)
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-@Schema(description = "College response DTO for API responses")
 public class CollegeResponseDto {
-    @Schema(description = "Unique college identifier")
-    Long collegeId;
-
-    @Schema(description = "College name")
-    String collegeName;
-
-    @Schema(description = "Campus name")
-    String campusName;
-
-    @Schema(description = "Campus code")
-    String campusCode;
-
-    @Schema(description = "Country of the college")
-    String country;
-
-    @Schema(description = "College logo URL")
-    String collegeLogo;
-
-    @Schema(description = "College website URL")
-    String websiteUrl;
-
-    @Schema(description = "Campus video link")
-    String campusGalleryVideoLink;
-
-    @Schema(description = "Year when the college was established")
-    Integer establishedYear;
-
-    @Schema(description = "College ranking details")
-    String ranking;
-
-    @Schema(description = "College description")
-    String description;
+    private Long id;
+    private String slug;
+    private String name;
+    private String campusName;
+    private String campusCode;
+    private String country;
+    private Integer establishedYear;
+    private String ranking;
+    private String description;
+    private String websiteUrl;
+    private String collegeLogo;
+    private String campusGalleryVideoLink;
+    private String bannerUrl;
+    private ActiveStatus status;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private String createdBy;
+    private String updatedBy;
 }

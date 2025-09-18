@@ -38,6 +38,13 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
+        // SHORT-CIRCUIT preflight requests - do not attempt JWT validation on OPTIONS
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            log.debug("OPTIONS preflight request - skipping JWT validation for {}", request.getRequestURI());
+            chain.doFilter(request, response);
+            return;
+        }
+
         String requestId = UUID.randomUUID().toString();
         MDC.put("requestId", requestId);
 
@@ -83,6 +90,7 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
                 } catch (Exception ex) {
                     log.error("JWT authentication failed for request {}: {}", request.getRequestURI(), ex.getMessage(), ex);
                     SecurityContextHolder.clearContext();
+                    // do NOT short-circuit the chain; let Security handle unauthorized response
                 }
 
             } else {

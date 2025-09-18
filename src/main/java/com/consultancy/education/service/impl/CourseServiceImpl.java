@@ -140,7 +140,7 @@ public class CourseServiceImpl implements CourseService {
                         "('%s', '%s', '%s', %s, NOW(), NOW()),",
                         escapeSqlString(course.getName()),
                         (course.getDepartment() != null ? escapeSqlString(course.getDepartment()) : null),
-                        escapeSqlString(course.getGraduationLevel().name()), // ENUM stored as String
+                        escapeSqlString(course.getGraduationLevel()), // ENUM stored as String
                         (course.getSpecialization() != null ? "'" + escapeSqlString(course.getSpecialization()) + "'" : "NULL")
                 ));
 

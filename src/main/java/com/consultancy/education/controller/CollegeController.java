@@ -1,191 +1,113 @@
 package com.consultancy.education.controller;
 
-import com.consultancy.education.DTOs.requestDTOs.college.CollegeAndAddressRequestDto;
-import com.consultancy.education.DTOs.requestDTOs.college.CollegeRequestDto;
+import com.consultancy.education.DTOs.requestDTOs.college.CollegeCreateRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.college.CollegeResponseDto;
-import com.consultancy.education.DTOs.responseDTOs.collegeCourse.CollegeCourseResponseDto;
-import com.consultancy.education.exception.CollegeException;
+import com.consultancy.education.exception.CustomException;
 import com.consultancy.education.exception.NotFoundException;
-import com.consultancy.education.exception.ValidationException;
 import com.consultancy.education.response.ApiFailureResponse;
 import com.consultancy.education.response.ApiSuccessResponse;
-import com.consultancy.education.helper.ExcelHelper;
 import com.consultancy.education.service.CollegeService;
 import com.consultancy.education.utils.ToMap;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
+@Slf4j
 @RestController
-@RequestMapping("/college")
+@RequestMapping("/colleges")
+@Tag(name = "College Controller", description = "Handles College operations")
 public class CollegeController {
 
     private final CollegeService collegeService;
 
-    CollegeController(CollegeService collegeService) {
+    public CollegeController(CollegeService collegeService) {
         this.collegeService = collegeService;
     }
 
-    @PostMapping("/add")
-    public ResponseEntity<?> addCollege(@RequestBody @Valid CollegeRequestDto collegeRequestDto, BindingResult bindingResult) {
+    // ------------------ Create College ------------------
+    @Operation(
+            summary = "Create a college",
+            description = "Creates a new college. `campusCode` and `slug` must be unique."
+    )
+    @ApiResponse(responseCode = "201", description = "Created",
+            content = @Content(schema = @Schema(implementation = CollegeResponseDto.class)))
+    @ApiResponse(responseCode = "400", description = "Validation/Business error",
+            content = @Content(schema = @Schema(implementation = ApiFailureResponse.class)))
+    @ApiResponse(responseCode = "500", description = "Server error",
+            content = @Content(schema = @Schema(implementation = ApiFailureResponse.class)))
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @PostMapping
+    public ResponseEntity<?> create(@RequestBody @Valid CollegeCreateRequestDto request,
+                                    BindingResult bindingResult) {
+        log.info("CreateCollege request received: slug={}, campusCode={}, name={}",
+                request.getSlug(), request.getCampusCode(), request.getName());
+
         if (bindingResult.hasErrors()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation Failed", 400));
+            log.error("CreateCollege validation errors");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
-        try{
-            CollegeResponseDto collegeResponseDto = collegeService.add(collegeRequestDto);
-            return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(collegeResponseDto,"College created successfully", 201));
-        }
-        catch(Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
 
-    @PostMapping("/bulkCollegesUpload")
-    public ResponseEntity<?> bulkCollegesUpload(@RequestParam("file") MultipartFile file){
-        if(ExcelHelper.checkExcelFormat(file)) {
-            try{
-                return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(collegeService.bulkCollegesUpload(file), "Success!", 201));
-            }
-            catch (Exception e){
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
-            }
-        }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(new ArrayList<>(),"Incorrect excel format", 400));
-    }
-
-    @GetMapping("/getColleges")
-    public ResponseEntity<?> getColleges(){
-        try{
-            List<CollegeResponseDto> colleges = collegeService.getColleges();
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(colleges, "Colleges fetched successfully", 200));
-        }
-        catch(Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @GetMapping("/getByCountries")
-    public ResponseEntity<?> getCollegesByCountries(@RequestParam List<String> countries){
-        try{
-            List<CollegeResponseDto> colleges = collegeService.getCollegesByCountries(countries);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(colleges, "Colleges filtered successfully", 200));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @GetMapping("/getByName")
-    public ResponseEntity<?> getCollegeByName(@RequestParam String name){
-        try{
-            List<CollegeResponseDto> collegeResponseDto = collegeService.getCollegeByName(name);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeResponseDto, "College fetched successfully", 200));
-        }
-        catch (NotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 404));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @GetMapping("/getCollege")
-    public ResponseEntity<?> getCollege(@RequestParam Long id){
-        try{
-            CollegeRequestDto collegeRequestDto = collegeService.getCollege(id);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeRequestDto, "College fetched successfully", 200));
-        }
-        catch (CollegeException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 404));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @GetMapping("/getCount")
-    public ResponseEntity<?> getCollegeCount(){
         try {
-            Long collegesCount = collegeService.getCollegeCount();
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(Map.of("collegesCount", collegesCount), "Colleges count fetched successfully", 200));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @DeleteMapping("/delete")
-    public ResponseEntity<?> deleteCollege(@RequestParam Long id){
-        try{
-            CollegeResponseDto collegeResponseDto  = collegeService.deleteCollege(id);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeResponseDto, "College deleted successfully", 200));
-        }
-        catch (NotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 404));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
+            CollegeResponseDto response = collegeService.create(request);
+            log.info("CreateCollege success: id={}, slug={}, campusCode={}",
+                    response.getId(), response.getSlug(), response.getCampusCode());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(new ApiSuccessResponse<>(response, "College created successfully!", 201));
+        } catch (CustomException e) {
+            log.error("CreateCollege business error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("CreateCollege internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
     }
 
-    @PutMapping("/update/{id}")
-    public ResponseEntity<?> updateCollege(@PathVariable Long id, @RequestBody CollegeRequestDto collegeRequestDto){
-        try{
-            CollegeRequestDto collegeResponseDto = collegeService.updateCollege(id, collegeRequestDto);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeResponseDto, "College updated successfully", 200));
+    // ------------------ Get College by ID ------------------
+    @Operation(
+            summary = "Get college by ID",
+            description = "Returns a college by its ID."
+    )
+    @ApiResponse(responseCode = "200", description = "OK",
+            content = @Content(schema = @Schema(implementation = CollegeResponseDto.class)))
+    @ApiResponse(responseCode = "404", description = "Not Found",
+            content = @Content(schema = @Schema(implementation = ApiFailureResponse.class)))
+    @ApiResponse(responseCode = "500", description = "Server error",
+            content = @Content(schema = @Schema(implementation = ApiFailureResponse.class)))
+    @PreAuthorize("permitAll()")
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getById(@PathVariable Long id) {
+        log.info("GetCollegeById request received: id={}", id);
+        try {
+            CollegeResponseDto response = collegeService.getById(id);
+            log.info("GetCollegeById success: id={}, slug={}", response.getId(), response.getSlug());
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(response, "College fetched successfully!", 200));
+        } catch (NotFoundException e) {
+            log.error("GetCollegeById not found: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (CustomException e) {
+            log.error("GetCollegeById business error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("GetCollegeById internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
-        catch (NotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 404));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-    @GetMapping("/sortByName")
-    public ResponseEntity<?> sortCollegeByName(@RequestParam String type){
-        try{
-            List<CollegeResponseDto> collegeResponseDto = collegeService.sortCollegeByName(type);
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeResponseDto, "Colleges sorted successfully", 200));
-        }
-        catch (ValidationException e){
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiFailureResponse<>(e.getErrors(),e.getMessage(), 400));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-    }
-
-//    @GetMapping("/getCollegeCourses/{collegeId}")
-//    public ResponseEntity<?> getCollegeCourses(@PathVariable Long collegeId){
-//        try{
-//            List<CollegeCourseResponseDto> collegeCourseResponseDtos = collegeService.getCollegeCourses(collegeId);
-//            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(collegeCourseResponseDtos, "College courses fetched successfully", 200));
-//        }
-//        catch (NotFoundException e){
-//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 404));
-//        }
-//        catch (Exception e){
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-//        }
-//    }
-
-    @GetMapping("updateInternalCollegeData")
-    public ResponseEntity<?> updateCollegeData(){
-        try{
-            String result = collegeService.updateInternalCollegeData();
-            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(result, "College campus updated successfully", 200));
-        }
-        catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(),e.getMessage(), 500));
-        }
-
     }
 }

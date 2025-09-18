@@ -1,9 +1,13 @@
 package com.consultancy.education.repository;
 
+import com.consultancy.education.model.College;
 import com.consultancy.education.model.CollegeCourse;
+import com.consultancy.education.model.Course;
 import com.consultancy.education.repository.custom.CollegeCourseRepositoryCustom;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
 
 @Repository
 public interface CollegeCourseRepository extends JpaRepository<CollegeCourse, Long>, CollegeCourseRepositoryCustom {
@@ -17,6 +21,11 @@ public interface CollegeCourseRepository extends JpaRepository<CollegeCourse, Lo
 //                """, nativeQuery = true)
 //    List<Object[]> searchCollegeCourse(String term);
 
+    boolean existsByCollegeAndCourse(College college, Course course);
+
+    // optional: find by college id, course id
+    boolean existsByCollegeIdAndCourseId(Long collegeId, Long courseId);
+    Optional<CollegeCourse> findByCollegeIdAndCourseId(Long collegeId, Long courseId);
 
 
 }

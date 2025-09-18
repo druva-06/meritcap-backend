@@ -23,12 +23,11 @@ public class Course {
     @Column(name = "name", nullable = false)
     String name;
 
-    @Column(name = "department", nullable = false)
+    @Column(name = "department")
     String department;
 
     @Column(name = "graduation_level", nullable = false)
-    @Enumerated(EnumType.STRING)
-    GraduationLevel graduationLevel;
+    String graduationLevel;
 
     @Column(name = "specialization")
     String specialization;

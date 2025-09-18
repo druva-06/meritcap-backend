@@ -7,7 +7,7 @@ import com.consultancy.education.DTOs.responseDTOs.search.SearchCourseResponseDt
 import org.springframework.web.multipart.MultipartFile;
 
 public interface CollegeCourseService {
-    String bulkCollegeCourseUpload(MultipartFile file);
+//    String bulkCollegeCourseUpload(MultipartFile file);
 
     SearchCourseResponseDto<SearchCollegeCourseResponseDto> getCollegeCourses(SearchCourseRequestDto searchCourseRequestDto);
 
