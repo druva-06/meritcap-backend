@@ -8,7 +8,11 @@ import lombok.*;
 @Builder
 public class WishlistItemResponse {
     private Long wishlistItemId;
-    private Long collegeCourseId;
     private Long studentId;
+    private Long collegeCourseId;
+    private String collegeName;
+    private String courseName;
+    private String campusName;
+    private String tuitionFee;
     // Optionally: add college/course details for richer UI later
 }

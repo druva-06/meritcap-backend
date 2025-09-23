@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -23,6 +24,7 @@ public class WishlistController {
     private final WishlistService wishlistService;
 
     @PostMapping
+    @PreAuthorize("permitAll()")
     public ResponseEntity<?> addWishlistItem(
             @PathVariable Long studentId,
             @Valid @RequestBody AddWishlistItemRequest request) {
@@ -44,6 +46,7 @@ public class WishlistController {
     }
 
     @GetMapping
+    @PreAuthorize("permitAll()")
     public ResponseEntity<?> getWishlistItems(@PathVariable Long studentId) {
         log.info("Received request to fetch wishlist items for student {}", studentId);
         try {
@@ -62,6 +65,7 @@ public class WishlistController {
     }
 
     @DeleteMapping("/{wishlistItemId}")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<?> removeWishlistItem(
             @PathVariable Long studentId,
             @PathVariable Long wishlistItemId) {
@@ -82,6 +86,7 @@ public class WishlistController {
     }
 
     @GetMapping("/count")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<?> getWishlistCount(@PathVariable Long studentId) {
         log.info("Received request to count wishlist items for student {}", studentId);
         try {
