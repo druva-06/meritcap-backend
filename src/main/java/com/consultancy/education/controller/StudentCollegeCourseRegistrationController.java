@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +28,7 @@ public class StudentCollegeCourseRegistrationController {
         this.studentCollegeCourseRegistrationService = studentCollegeCourseRegistrationService;
     }
 
+    @PreAuthorize("hasRole('STUDENT')")
     @PostMapping("/start")
     public ResponseEntity<?> registerStudent(@RequestBody @Valid StudentCollegeCourseRegistrationRequestDto request) {
         log.info("New registration: studentId={}, courseId={}, intake={}",

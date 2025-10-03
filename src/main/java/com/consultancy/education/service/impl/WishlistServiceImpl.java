@@ -96,6 +96,7 @@ public class WishlistServiceImpl implements WishlistService {
                 WishlistItemResponse.builder()
                         .wishlistItemId(item.getId())
                         .collegeCourseId(item.getCollegeCourse().getId())
+                        .intakeMonths(item.getCollegeCourse().getIntakeMonths())
                         .collegeName(item.getCollegeCourse().getCollege().getName())
                         .campusName(item.getCollegeCourse().getCollege().getCampusName())
                         .courseName(item.getCollegeCourse().getCourse().getName())
