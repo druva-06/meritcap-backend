@@ -81,7 +81,7 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
         StudentCollegeCourseRegistration registration = StudentCollegeCourseRegistration.builder()
                 .student(student)
                 .collegeCourseSnapshot(snapshot)
-                .applicationStatus(ApprovalStatus.PENDING)
+                .applicationStatus(ApprovalStatus.SUBMITTED)
                 .intakeSession(requestDto.getIntakeSession())
                 .applicationYear(year)
                 .remarks(requestDto.getRemarks())

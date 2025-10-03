@@ -75,6 +75,7 @@ public class StudentCollegeCourseRegistrationController {
         }
     }
 
+    @PreAuthorize("hasRole('STUDENT')")
     @GetMapping("/{registrationId}")
     public ResponseEntity<?> getRegistration(@PathVariable Long registrationId) {
         log.info("GET /{} called", registrationId);
@@ -96,6 +97,7 @@ public class StudentCollegeCourseRegistrationController {
         }
     }
 
+    @PreAuthorize("hasRole('STUDENT')")
     @GetMapping("/student/{studentId}")
     public ResponseEntity<?> getRegistrationsByStudent(@PathVariable Long studentId) {
         log.info("GET /student/{} called", studentId);
