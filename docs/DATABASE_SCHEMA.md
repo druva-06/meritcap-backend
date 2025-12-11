@@ -135,7 +135,7 @@ CREATE TABLE `leads` (
   `country` varchar(100) DEFAULT NULL,
 
   -- Lead Management
-  `status` enum('HOT','WARM','COLD','CONVERTED','CLOSED') NOT NULL DEFAULT 'WARM',
+  `status` enum('HOT','IMMEDIATE_HOT','WARM','COLD','FEATURE_LEAD','CONTACTED') NOT NULL DEFAULT 'WARM',
   `score` int DEFAULT 0,
   `lead_source` varchar(100) DEFAULT NULL,
 
@@ -455,7 +455,7 @@ CREATE INDEX idx_course_field ON courses(field_of_study);
 - Role: ADMIN, COUNSELOR, STUDENT, COLLEGE
 - Gender: MALE, FEMALE, OTHER
 - Status: ACTIVE, INACTIVE, SUSPENDED
-- Lead Status: HOT, WARM, COLD, CONVERTED, CLOSED
+- Lead Status: HOT, IMMEDIATE_HOT, WARM, COLD, FEATURE_LEAD, CONTACTED
 
 ### Decimal Types
 

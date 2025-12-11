@@ -1,6 +1,8 @@
 package com.consultancy.education.service.impl;
 
+import com.consultancy.education.DTOs.requestDTOs.lead.LeadFilterDto;
 import com.consultancy.education.DTOs.requestDTOs.lead.LeadRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.lead.LeadPageResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.lead.LeadResponseDto;
 import com.consultancy.education.exception.CustomException;
 import com.consultancy.education.exception.NotFoundException;
@@ -8,9 +10,15 @@ import com.consultancy.education.model.Lead;
 import com.consultancy.education.model.User;
 import com.consultancy.education.repository.LeadRepository;
 import com.consultancy.education.repository.UserRepository;
+import com.consultancy.education.repository.specification.LeadSpecification;
 import com.consultancy.education.service.LeadService;
 import com.consultancy.education.transformer.LeadTransformer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,5 +84,38 @@ public class LeadServiceImpl implements LeadService {
 
         // Convert to response DTO
         return LeadTransformer.toResponseDto(savedLead);
+    }
+
+    @Override
+    public LeadPageResponseDto getLeads(LeadFilterDto filterDto) {
+        log.info("Fetching leads with filters: {}", filterDto);
+
+        // Build specification from filter
+        Specification<Lead> spec = LeadSpecification.filterLeads(filterDto);
+
+        // Build pageable with sorting
+        Sort sort = Sort.by(
+            filterDto.getSortDirection().equalsIgnoreCase("ASC") 
+                ? Sort.Direction.ASC 
+                : Sort.Direction.DESC,
+            filterDto.getSortBy()
+        );
+        
+        Pageable pageable = PageRequest.of(
+            filterDto.getPage(), 
+            filterDto.getSize(), 
+            sort
+        );
+
+        // Fetch leads with specification and pagination
+        Page<Lead> leadPage = leadRepository.findAll(spec, pageable);
+
+        log.info("Found {} leads (Page {}/{})", 
+                leadPage.getTotalElements(), 
+                leadPage.getNumber() + 1, 
+                leadPage.getTotalPages());
+
+        // Convert to response DTO
+        return LeadTransformer.toPageResponse(leadPage);
     }
 }

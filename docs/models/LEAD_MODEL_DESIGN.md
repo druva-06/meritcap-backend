@@ -15,21 +15,21 @@ The Lead model is designed to store lead generation information with a hybrid ap
 
 These fields are used for filtering, searching, and display in the leads list:
 
-| Field                 | Type         | Purpose                                         |
-| --------------------- | ------------ | ----------------------------------------------- |
-| `first_name`          | VARCHAR(255) | Lead's first name - searchable                  |
-| `last_name`           | VARCHAR(255) | Lead's last name - searchable                   |
-| `email`               | VARCHAR(255) | Email - searchable, indexed                     |
-| `phone_number`        | VARCHAR(20)  | Phone - searchable, indexed                     |
-| `country`             | VARCHAR(100) | Country - filterable                            |
-| `status`              | ENUM         | HOT, WARM, COLD, CONVERTED, CLOSED - filterable |
-| `score`               | INT          | Lead score 0-100 - sortable                     |
-| `lead_source`         | VARCHAR(100) | Source of lead - filterable                     |
-| `preferred_countries` | TEXT         | Comma-separated countries - filterable          |
-| `preferred_courses`   | TEXT         | Comma-separated courses - filterable            |
-| `budget_range`        | VARCHAR(100) | Budget - filterable                             |
-| `intake`              | VARCHAR(50)  | Intake period - filterable                      |
-| `tags`                | TEXT         | Tags for categorization - searchable            |
+| Field                 | Type         | Purpose                                                              |
+| --------------------- | ------------ | -------------------------------------------------------------------- |
+| `first_name`          | VARCHAR(255) | Lead's first name - searchable                                       |
+| `last_name`           | VARCHAR(255) | Lead's last name - searchable                                        |
+| `email`               | VARCHAR(255) | Email - searchable, indexed                                          |
+| `phone_number`        | VARCHAR(20)  | Phone - searchable, indexed                                          |
+| `country`             | VARCHAR(100) | Country - filterable                                                 |
+| `status`              | ENUM         | HOT, IMMEDIATE_HOT, WARM, COLD, FEATURE_LEAD, CONTACTED - filterable |
+| `score`               | INT          | Lead score 0-100 - sortable                                          |
+| `lead_source`         | VARCHAR(100) | Source of lead - filterable                                          |
+| `preferred_countries` | TEXT         | Comma-separated countries - filterable                               |
+| `preferred_courses`   | TEXT         | Comma-separated courses - filterable                                 |
+| `budget_range`        | VARCHAR(100) | Budget - filterable                                                  |
+| `intake`              | VARCHAR(50)  | Intake period - filterable                                           |
+| `tags`                | TEXT         | Tags for categorization - searchable                                 |
 
 #### Management Fields
 
@@ -166,13 +166,15 @@ CREATE FULLTEXT INDEX idx_lead_search ON leads(first_name, last_name, email, tag
 ```
 New Lead → WARM (default)
    ↓
-Counselor evaluates
+First Contact → CONTACTED
    ↓
-HOT (high interest) / COLD (low interest)
+Counselor evaluates interest level
    ↓
-Successfully enrolled → CONVERTED
-   ↓
-Not interested / Invalid → CLOSED
+   ├─→ IMMEDIATE_HOT (extremely urgent, needs immediate attention)
+   ├─→ HOT (high priority, very interested)
+   ├─→ WARM (moderate interest, needs nurturing)
+   ├─→ COLD (low interest or not responsive)
+   └─→ FEATURE_LEAD (premium/featured lead for special handling)
 ```
 
 ## Duplicate Detection Strategy

@@ -55,6 +55,9 @@ public class LeadRequestDto {
     @Schema(description = "Source of the lead (e.g., Website, Referral, Social Media)")
     String leadSource;
 
+    @Schema(description = "Campaign name")
+    String campaign;
+
     // Preferences (Plain text - for filtering)
     @Schema(description = "Comma-separated list of preferred countries")
     String preferredCountries;

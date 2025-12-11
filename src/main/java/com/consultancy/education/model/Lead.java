@@ -46,6 +46,9 @@ public class Lead {
     @Column(name = "lead_source")
     String leadSource;
 
+    @Column(name = "campaign")
+    String campaign; // Campaign name for filtering
+
     // Preferred options for filtering/searching
     @Column(name = "preferred_countries", columnDefinition = "TEXT")
     String preferredCountries; // Comma-separated or JSON array

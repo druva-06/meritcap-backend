@@ -1,6 +1,8 @@
 package com.consultancy.education.controller;
 
+import com.consultancy.education.DTOs.requestDTOs.lead.LeadFilterDto;
 import com.consultancy.education.DTOs.requestDTOs.lead.LeadRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.lead.LeadPageResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.lead.LeadResponseDto;
 import com.consultancy.education.exception.CustomException;
 import com.consultancy.education.exception.NotFoundException;
@@ -21,6 +23,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -78,6 +81,60 @@ public class LeadController {
             log.error("Unexpected error during lead creation: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), "Internal server error", 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'COUNSELOR')")
+    @GetMapping
+    @Operation(summary = "Get leads with filters and pagination", description = "Retrieves leads based on filter criteria with pagination support")
+    public ResponseEntity<?> getLeads(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String campaign,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) Integer scoreFrom,
+            @RequestParam(required = false) Integer scoreTo,
+            @RequestParam(required = false) List<String> status,
+            @RequestParam(required = false) List<String> tags,
+            @RequestParam(required = false) Long assignedTo,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "DESC") String sortDirection) {
+
+        log.info("Get leads request - search: {}, campaign: {}, page: {}, size: {}", 
+                search, campaign, page, size);
+
+        try {
+            // Build filter DTO
+            LeadFilterDto filterDto = LeadFilterDto.builder()
+                    .search(search)
+                    .campaign(campaign)
+                    .dateFrom(dateFrom != null ? java.time.LocalDate.parse(dateFrom) : null)
+                    .dateTo(dateTo != null ? java.time.LocalDate.parse(dateTo) : null)
+                    .scoreFrom(scoreFrom)
+                    .scoreTo(scoreTo)
+                    .status(status != null ? status.stream()
+                            .map(s -> com.consultancy.education.enums.LeadStatus.valueOf(s))
+                            .collect(java.util.stream.Collectors.toList()) : null)
+                    .tags(tags)
+                    .assignedTo(assignedTo)
+                    .page(page)
+                    .size(size)
+                    .sortBy(sortBy)
+                    .sortDirection(sortDirection)
+                    .build();
+
+            // Get leads
+            LeadPageResponseDto response = leadService.getLeads(filterDto);
+
+            log.info("Successfully fetched {} leads", response.getTotalElements());
+            return ResponseEntity.ok(new ApiSuccessResponse<>(response, "Leads fetched successfully", 200));
+
+        } catch (Exception e) {
+            log.error("Error fetching leads: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), "Error fetching leads: " + e.getMessage(), 500));
         }
     }
 

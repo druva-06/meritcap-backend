@@ -2,10 +2,12 @@ package com.consultancy.education.transformer;
 
 import com.consultancy.education.DTOs.requestDTOs.lead.LeadRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.lead.LeadListResponseDto;
+import com.consultancy.education.DTOs.responseDTOs.lead.LeadPageResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.lead.LeadResponseDto;
 import com.consultancy.education.enums.LeadStatus;
 import com.consultancy.education.model.Lead;
 import com.consultancy.education.model.User;
+import org.springframework.data.domain.Page;
 
 import java.util.Arrays;
 import java.util.List;
@@ -23,6 +25,7 @@ public class LeadTransformer {
                 .status(dto.getStatus() != null ? dto.getStatus() : LeadStatus.WARM)
                 .score(dto.getScore() != null ? dto.getScore() : 0)
                 .leadSource(dto.getLeadSource())
+                .campaign(dto.getCampaign())
                 .preferredCountries(dto.getPreferredCountries())
                 .preferredCourses(dto.getPreferredCourses())
                 .budgetRange(dto.getBudgetRange())
@@ -128,6 +131,9 @@ public class LeadTransformer {
         if (dto.getLeadSource() != null) {
             lead.setLeadSource(dto.getLeadSource());
         }
+        if (dto.getCampaign() != null) {
+            lead.setCampaign(dto.getCampaign());
+        }
         if (dto.getPreferredCountries() != null) {
             lead.setPreferredCountries(dto.getPreferredCountries());
         }
@@ -155,5 +161,19 @@ public class LeadTransformer {
         if (dto.getEncryptedPreferences() != null) {
             lead.setEncryptedPreferences(dto.getEncryptedPreferences());
         }
+    }
+
+    public static LeadPageResponseDto toPageResponse(Page<Lead> page) {
+        return LeadPageResponseDto.builder()
+                .leads(toListResponseDtos(page.getContent()))
+                .currentPage(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .isFirst(page.isFirst())
+                .isLast(page.isLast())
+                .hasNext(page.hasNext())
+                .hasPrevious(page.hasPrevious())
+                .build();
     }
 }

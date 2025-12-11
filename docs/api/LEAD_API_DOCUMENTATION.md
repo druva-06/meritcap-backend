@@ -1,11 +1,16 @@
 # Lead API Documentation
 
+## Table of Contents
+1. [Create Lead API](#create-lead-api)
+2. [Get Leads API (with Filters & Pagination)](#get-leads-api)
+
+---
+
 ## Create Lead API
 
 ### Endpoint
-
 ```
-POST /api/leads
+POST /leads/add
 ```
 
 ### Description
@@ -35,6 +40,7 @@ Authorization: Bearer <token>
   "status": "HOT",
   "score": 95,
   "lead_source": "Website",
+  "campaign": "Summer 2026 MBA Campaign",
   "preferred_countries": "USA,Canada,UK",
   "preferred_courses": "MBA,Computer Science",
   "budget_range": "20-30 Lakhs",
@@ -57,9 +63,10 @@ Authorization: Bearer <token>
 ### Optional Fields
 
 - `country` (string)
-- `status` (enum: HOT, WARM, COLD, CONVERTED, CLOSED - defaults to WARM)
+- `status` (enum: HOT, IMMEDIATE_HOT, WARM, COLD, FEATURE_LEAD, CONTACTED - defaults to WARM)
 - `score` (integer: 0-100, defaults to 0)
 - `lead_source` (string)
+- `campaign` (string: campaign name for tracking and filtering)
 - `preferred_countries` (string: comma-separated)
 - `preferred_courses` (string: comma-separated)
 - `budget_range` (string)
@@ -241,4 +248,307 @@ curl -X POST http://localhost:8080/api/leads \
     "tags": ["MBA", "USA"],
     "assigned_to": 5
   }'
+```
+
+---
+
+## Get Leads API
+
+### Endpoint
+```
+GET /leads
+```
+
+### Description
+Retrieves a paginated list of leads with advanced filtering capabilities. Supports search, campaign filtering, date range, score range, status filtering, and tag-based filtering.
+
+### Authentication
+Requires authenticated user (Admin or Counselor role)
+
+### Request Headers
+```
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+### Query Parameters
+
+| Parameter | Type | Required | Description | Example |
+|-----------|------|----------|-------------|---------|
+| `search` | string | No | Search by name, email, or phone | `Priya` |
+| `campaign` | string | No | Filter by campaign name | `Summer 2026 MBA Campaign` |
+| `date_from` | string | No | Filter from date (yyyy-MM-dd) | `2025-01-01` |
+| `date_to` | string | No | Filter to date (yyyy-MM-dd) | `2025-12-31` |
+| `score_from` | integer | No | Minimum score (0-100) | `80` |
+| `score_to` | integer | No | Maximum score (0-100) | `100` |
+| `status` | array | No | Filter by status (can be multiple) | `HOT,IMMEDIATE_HOT` |
+| `tags` | array | No | Filter by tags (can be multiple) | `MBA,USA` |
+| `assigned_to` | long | No | Filter by assigned counselor ID | `5` |
+| `page` | integer | No | Page number (0-based, default: 0) | `0` |
+| `size` | integer | No | Page size (default: 10) | `20` |
+| `sort_by` | string | No | Sort field (default: createdAt) | `score` |
+| `sort_direction` | string | No | Sort direction: ASC or DESC (default: DESC) | `DESC` |
+
+### Example Requests
+
+#### 1. Basic - Get all leads (first page)
+```bash
+GET /leads?page=0&size=10
+```
+
+#### 2. Search by name/email/phone
+```bash
+GET /leads?search=Priya&page=0&size=10
+```
+
+#### 3. Filter by campaign
+```bash
+GET /leads?campaign=Summer%202026%20MBA%20Campaign&page=0&size=10
+```
+
+#### 4. Filter by date range
+```bash
+GET /leads?date_from=2025-01-01&date_to=2025-12-31&page=0&size=10
+```
+
+#### 5. Filter by score range
+```bash
+GET /leads?score_from=80&score_to=100&page=0&size=10
+```
+
+#### 6. Filter by status
+```bash
+GET /leads?status=HOT&status=IMMEDIATE_HOT&page=0&size=10
+```
+
+#### 7. Filter by tags
+```bash
+GET /leads?tags=MBA&tags=USA&page=0&size=10
+```
+
+#### 8. Combined filters with sorting
+```bash
+GET /leads?search=Sharma&campaign=Summer%202026&status=HOT&tags=MBA&score_from=90&sort_by=score&sort_direction=DESC&page=0&size=20
+```
+
+#### 9. Filter by assigned counselor
+```bash
+GET /leads?assigned_to=5&page=0&size=10
+```
+
+### Success Response (200 OK)
+
+```json
+{
+  "data": {
+    "leads": [
+      {
+        "id": 1,
+        "name": "Priya Sharma",
+        "email": "priya.sharma@email.com",
+        "phone_number": "+91 98765 43210",
+        "status": "HOT",
+        "score": 95,
+        "tags": ["MBA", "USA"],
+        "assigned_to_name": "John Counselor",
+        "is_duplicate": false,
+        "created_at": "2025-12-07T10:30:00.000Z"
+      },
+      {
+        "id": 2,
+        "name": "Rahul Patel",
+        "email": "rahul.patel@email.com",
+        "phone_number": "+91 87654 32109",
+        "status": "WARM",
+        "score": 82,
+        "tags": ["Engineering", "Canada"],
+        "assigned_to_name": null,
+        "is_duplicate": false,
+        "created_at": "2025-12-06T15:45:00.000Z"
+      }
+    ],
+    "current_page": 0,
+    "page_size": 10,
+    "total_elements": 25,
+    "total_pages": 3,
+    "is_first": true,
+    "is_last": false,
+    "has_next": true,
+    "has_previous": false
+  },
+  "message": "Leads fetched successfully",
+  "statusCode": 200
+}
+```
+
+### Response Fields
+
+#### Pagination Fields
+- `current_page`: Current page number (0-based)
+- `page_size`: Number of items per page
+- `total_elements`: Total number of leads matching the filters
+- `total_pages`: Total number of pages available
+- `is_first`: Whether this is the first page
+- `is_last`: Whether this is the last page
+- `has_next`: Whether there is a next page
+- `has_previous`: Whether there is a previous page
+
+#### Lead Fields (in leads array)
+- `id`: Lead ID
+- `name`: Full name (first_name + last_name)
+- `email`: Email address
+- `phone_number`: Phone number
+- `status`: Lead status
+- `score`: Lead score (0-100)
+- `tags`: Array of tags
+- `assigned_to_name`: Name of assigned counselor (null if unassigned)
+- `is_duplicate`: Whether marked as duplicate
+- `created_at`: Creation timestamp
+
+### Error Responses
+
+#### 400 Bad Request - Invalid Parameters
+```json
+{
+  "errors": [],
+  "message": "Invalid date format for date_from",
+  "statusCode": 400
+}
+```
+
+#### 401 Unauthorized
+```json
+{
+  "errors": [],
+  "message": "User not authenticated",
+  "statusCode": 401
+}
+```
+
+#### 403 Forbidden
+```json
+{
+  "errors": [],
+  "message": "Access denied. Required role: ADMIN or COUNSELOR",
+  "statusCode": 403
+}
+```
+
+#### 500 Internal Server Error
+```json
+{
+  "errors": [],
+  "message": "Error fetching leads: Database connection failed",
+  "statusCode": 500
+}
+```
+
+## Testing with cURL
+
+### Example 1: Get all leads
+```bash
+curl -X GET "http://localhost:8080/leads?page=0&size=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example 2: Search and filter
+```bash
+curl -X GET "http://localhost:8080/leads?search=Priya&status=HOT&status=IMMEDIATE_HOT&tags=MBA&page=0&size=20" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example 3: Filter by campaign and date range
+```bash
+curl -X GET "http://localhost:8080/leads?campaign=Summer%202026%20MBA%20Campaign&date_from=2025-01-01&date_to=2025-12-31&page=0&size=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example 4: Filter by score range and sort
+```bash
+curl -X GET "http://localhost:8080/leads?score_from=90&score_to=100&sort_by=score&sort_direction=DESC&page=0&size=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+## Filter Combinations
+
+The API supports combining multiple filters. All filters work together with AND logic:
+
+```
+GET /leads?search=Sharma&campaign=Summer2026&status=HOT&tags=MBA&score_from=80&date_from=2025-01-01
+```
+
+This will return leads that:
+- Match "Sharma" in name, email, or phone AND
+- Belong to "Summer2026" campaign AND
+- Have HOT status AND
+- Have MBA tag AND
+- Have score >= 80 AND
+- Created after 2025-01-01
+
+## Performance Considerations
+
+1. **Indexed Fields**: The following fields are indexed for faster queries:
+   - `email`
+   - `phone_number`
+   - `status`
+   - `campaign`
+   - `created_at`
+   - Full-text search on: `first_name`, `last_name`, `email`, `tags`
+
+2. **Pagination**: Always use pagination to avoid loading large result sets
+
+3. **Recommended Page Sizes**:
+   - Default: 10 items
+   - Maximum recommended: 50 items
+   - For exports: Use multiple paginated requests
+
+## Frontend Integration Notes
+
+### Example: React/Vue Component
+
+```javascript
+async function fetchLeads(filters) {
+  const params = new URLSearchParams();
+  
+  if (filters.search) params.append('search', filters.search);
+  if (filters.campaign) params.append('campaign', filters.campaign);
+  if (filters.dateFrom) params.append('date_from', filters.dateFrom);
+  if (filters.dateTo) params.append('date_to', filters.dateTo);
+  if (filters.scoreFrom) params.append('score_from', filters.scoreFrom);
+  if (filters.scoreTo) params.append('score_to', filters.scoreTo);
+  
+  // Add multiple status filters
+  filters.status?.forEach(s => params.append('status', s));
+  
+  // Add multiple tag filters
+  filters.tags?.forEach(t => params.append('tags', t));
+  
+  if (filters.assignedTo) params.append('assigned_to', filters.assignedTo);
+  
+  params.append('page', filters.page || 0);
+  params.append('size', filters.size || 10);
+  params.append('sort_by', filters.sortBy || 'createdAt');
+  params.append('sort_direction', filters.sortDirection || 'DESC');
+  
+  const response = await fetch(`/leads?${params.toString()}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  return await response.json();
+}
+```
+
+### Example Usage:
+```javascript
+const leads = await fetchLeads({
+  search: 'Priya',
+  campaign: 'Summer 2026 MBA Campaign',
+  status: ['HOT', 'IMMEDIATE_HOT'],
+  tags: ['MBA', 'USA'],
+  scoreFrom: 80,
+  page: 0,
+  size: 20
+});
 ```

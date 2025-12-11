@@ -13,9 +13,10 @@ CREATE TABLE `leads` (
   `country` varchar(100) DEFAULT NULL,
   
   -- Lead Management Fields
-  `status` enum('HOT','WARM','COLD','CONVERTED','CLOSED') NOT NULL DEFAULT 'WARM',
+  `status` enum('HOT','IMMEDIATE_HOT','WARM','COLD','FEATURE_LEAD','CONTACTED') NOT NULL DEFAULT 'WARM',
   `score` int DEFAULT 0,
   `lead_source` varchar(100) DEFAULT NULL,
+  `campaign` varchar(100) DEFAULT NULL,
   
   -- Preferences (for filtering/searching)
   `preferred_countries` text DEFAULT NULL,
@@ -48,6 +49,7 @@ CREATE TABLE `leads` (
   KEY `idx_assigned_to` (`assigned_to`),
   KEY `idx_created_by` (`created_by`),
   KEY `idx_country` (`country`),
+  KEY `idx_campaign` (`campaign`),
   KEY `idx_created_at` (`created_at`),
   
   CONSTRAINT `FK_lead_assigned_to` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`id`) ON DELETE SET NULL,
