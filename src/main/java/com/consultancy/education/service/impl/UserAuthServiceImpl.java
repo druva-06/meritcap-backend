@@ -8,10 +8,11 @@ import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthRefreshReques
 import com.consultancy.education.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.userAuth.UserAuthRefreshResponseDto;
-import com.consultancy.education.enums.Role;
 import com.consultancy.education.exception.CustomException;
+import com.consultancy.education.model.Role;
 import com.consultancy.education.model.Student;
 import com.consultancy.education.model.User;
+import com.consultancy.education.repository.RoleRepository;
 import com.consultancy.education.repository.UserRepository;
 import com.consultancy.education.service.UserAuthService;
 import com.consultancy.education.transformer.UserAuthTransformer;
@@ -30,8 +31,8 @@ import java.util.Map;
 @Service
 public class UserAuthServiceImpl implements UserAuthService {
 
-
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final CognitoIdentityProviderClient cognitoClient;
 
     @Value("${aws.cognito.userPoolId}")
@@ -43,8 +44,10 @@ public class UserAuthServiceImpl implements UserAuthService {
     @Value("${aws.cognito.clientSecret}")
     private String clientSecret;
 
-    UserAuthServiceImpl(UserRepository userRepository, CognitoIdentityProviderClient cognitoClient) {
+    UserAuthServiceImpl(UserRepository userRepository, RoleRepository roleRepository,
+            CognitoIdentityProviderClient cognitoClient) {
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
         this.cognitoClient = cognitoClient;
     }
 
@@ -52,28 +55,33 @@ public class UserAuthServiceImpl implements UserAuthService {
     public String signup(UserAuthSignUpRequestDto userAuthSignUpRequestDto) {
         log.info("Signup service started for email: {}", userAuthSignUpRequestDto.getEmail());
 
-        if(userRepository.findByEmail(userAuthSignUpRequestDto.getEmail())!=null){
+        if (userRepository.findByEmail(userAuthSignUpRequestDto.getEmail()) != null) {
             log.error("Email Already Exists: {}", userAuthSignUpRequestDto.getEmail());
             throw new CustomException("Email Already Exists");
         }
 
-        if(userRepository.findByPhoneNumber(userAuthSignUpRequestDto.getPhoneNumber())!=null){
+        if (userRepository.findByPhoneNumber(userAuthSignUpRequestDto.getPhoneNumber()) != null) {
             log.error("Phone Already Exists: {}", userAuthSignUpRequestDto.getPhoneNumber());
             throw new CustomException("Phone Number Already Exists");
         }
 
-        if(userRepository.findByUsername(userAuthSignUpRequestDto.getUsername())!=null){
+        if (userRepository.findByUsername(userAuthSignUpRequestDto.getUsername()) != null) {
             log.error("Username Already Exists: {}", userAuthSignUpRequestDto.getUsername());
             throw new CustomException("Username Already Exists");
         }
 
         Map<String, AttributeType> attributes = new HashMap<>();
-        attributes.put("email", AttributeType.builder().name("email").value(userAuthSignUpRequestDto.getEmail()).build());
-        attributes.put("phone_number", AttributeType.builder().name("phone_number").value(userAuthSignUpRequestDto.getPhoneNumber()).build());
-        attributes.put("name", AttributeType.builder().name("name").value(userAuthSignUpRequestDto.getFirstName()).build());
-        attributes.put("preferred_username", AttributeType.builder().name("preferred_username").value(userAuthSignUpRequestDto.getUsername()).build());
+        attributes.put("email",
+                AttributeType.builder().name("email").value(userAuthSignUpRequestDto.getEmail()).build());
+        attributes.put("phone_number",
+                AttributeType.builder().name("phone_number").value(userAuthSignUpRequestDto.getPhoneNumber()).build());
+        attributes.put("name",
+                AttributeType.builder().name("name").value(userAuthSignUpRequestDto.getFirstName()).build());
+        attributes.put("preferred_username", AttributeType.builder().name("preferred_username")
+                .value(userAuthSignUpRequestDto.getUsername()).build());
 
-        String secretHash = CognitoUtil.calculateSecretHash(clientId, clientSecret, userAuthSignUpRequestDto.getEmail());
+        String secretHash = CognitoUtil.calculateSecretHash(clientId, clientSecret,
+                userAuthSignUpRequestDto.getEmail());
 
         SignUpRequest signUpRequest = SignUpRequest.builder()
                 .clientId(clientId)
@@ -90,7 +98,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.info("User signup request sent to Cognito for email: {}", userAuthSignUpRequestDto.getEmail());
 
             // Add user to Cognito group
-            String groupName = userAuthSignUpRequestDto.getRole().name();
+            String groupName = userAuthSignUpRequestDto.getRole(); // role is already a String
             AdminAddUserToGroupRequest groupRequest = AdminAddUserToGroupRequest.builder()
                     .userPoolId(userPoolId)
                     .username(userAuthSignUpRequestDto.getEmail())
@@ -100,10 +108,15 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.info("User {} added to Cognito group: {}", userAuthSignUpRequestDto.getEmail(), groupName);
 
             // Save user in local database
-            User user = UserAuthTransformer.toUserEntity(userAuthSignUpRequestDto);
+            // Fetch role from database
+            String roleName = userAuthSignUpRequestDto.getRole();
+            Role role = roleRepository.findByNameIgnoreCase(roleName)
+                    .orElseThrow(() -> new CustomException("Role not found: " + roleName));
+
+            User user = UserAuthTransformer.toUserEntity(userAuthSignUpRequestDto, role);
 
             // Only create Student entity if the role is STUDENT
-            if (userAuthSignUpRequestDto.getRole() == Role.STUDENT) {
+            if ("STUDENT".equalsIgnoreCase(userAuthSignUpRequestDto.getRole())) {
                 Student student = new Student();
                 student.setUser(user);
                 user.setStudent(student);
@@ -129,7 +142,8 @@ public class UserAuthServiceImpl implements UserAuthService {
                 throw new CustomException(errorMessage);
             }
         } catch (Exception ex) {
-            log.error("Unexpected error during signup for email {}: {}", userAuthSignUpRequestDto.getEmail(), ex.getMessage(), ex);
+            log.error("Unexpected error during signup for email {}: {}", userAuthSignUpRequestDto.getEmail(),
+                    ex.getMessage(), ex);
             throw new CustomException("Unexpected error during signup. Please try again.");
         }
     }
@@ -141,13 +155,15 @@ public class UserAuthServiceImpl implements UserAuthService {
         User user = userRepository.findByEmail(userAuthLoginRequestDto.getEmail());
         if (user != null && Boolean.TRUE.equals(user.getAccountLocked())) {
             log.warn("Account is locked for user: {}", user.getEmail());
-            throw new CustomException("Account is locked due to too many failed login attempts. Please reset your password or contact support.");
+            throw new CustomException(
+                    "Account is locked due to too many failed login attempts. Please reset your password or contact support.");
         }
 
         Map<String, String> authParams = new HashMap<>();
         authParams.put("USERNAME", userAuthLoginRequestDto.getEmail());
         authParams.put("PASSWORD", userAuthLoginRequestDto.getPassword());
-        authParams.put("SECRET_HASH", CognitoUtil.calculateSecretHash(clientId, clientSecret, userAuthLoginRequestDto.getEmail()));
+        authParams.put("SECRET_HASH",
+                CognitoUtil.calculateSecretHash(clientId, clientSecret, userAuthLoginRequestDto.getEmail()));
 
         log.debug("AuthParams: {}", authParams.keySet());
 
@@ -191,8 +207,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.info("Login process completed successfully for email: {}", email);
 
             return userAuthLoginResponseDto;
-        }
-        catch (CognitoIdentityProviderException e) {
+        } catch (CognitoIdentityProviderException e) {
             String errorMessage = e.awsErrorDetails().errorMessage();
             log.warn("Login failed for email: {}. Reason: {}", userAuthLoginRequestDto.getEmail(), errorMessage);
 
@@ -217,9 +232,9 @@ public class UserAuthServiceImpl implements UserAuthService {
             } else {
                 throw new CustomException(errorMessage);
             }
-        }
-        catch (Exception ex) {
-            log.error("Unexpected error during login for email: {}. Details: {}", userAuthLoginRequestDto.getEmail(), ex.getMessage());
+        } catch (Exception ex) {
+            log.error("Unexpected error during login for email: {}. Details: {}", userAuthLoginRequestDto.getEmail(),
+                    ex.getMessage());
             throw new CustomException("Internal server error.");
         }
     }
@@ -418,7 +433,8 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.warn("Refresh token: email is null or empty");
             throw new CustomException("Email cannot be empty.");
         }
-        if (refreshTokenRequestDto.getRefreshToken() == null || refreshTokenRequestDto.getRefreshToken().trim().isEmpty()) {
+        if (refreshTokenRequestDto.getRefreshToken() == null
+                || refreshTokenRequestDto.getRefreshToken().trim().isEmpty()) {
             log.warn("Refresh token: refreshToken is null or empty for email: {}", refreshTokenRequestDto.getEmail());
             throw new CustomException("Refresh token cannot be empty.");
         }
@@ -426,8 +442,10 @@ public class UserAuthServiceImpl implements UserAuthService {
         try {
             Map<String, String> authParams = new HashMap<>();
             authParams.put("REFRESH_TOKEN", refreshTokenRequestDto.getRefreshToken());
-            // secret hash is required in your codebase patterns (you use it for login/signup)
-            String secretHash = CognitoUtil.calculateSecretHash(clientId, clientSecret, refreshTokenRequestDto.getEmail());
+            // secret hash is required in your codebase patterns (you use it for
+            // login/signup)
+            String secretHash = CognitoUtil.calculateSecretHash(clientId, clientSecret,
+                    refreshTokenRequestDto.getEmail());
             authParams.put("SECRET_HASH", secretHash);
 
             InitiateAuthRequest authRequest = InitiateAuthRequest.builder()
@@ -440,7 +458,8 @@ public class UserAuthServiceImpl implements UserAuthService {
             AuthenticationResultType result = authResponse.authenticationResult();
 
             if (result == null) {
-                log.error("Cognito returned null authenticationResult for refresh token, email: {}", refreshTokenRequestDto.getEmail());
+                log.error("Cognito returned null authenticationResult for refresh token, email: {}",
+                        refreshTokenRequestDto.getEmail());
                 throw new CustomException("Unable to refresh token");
             }
 
@@ -462,7 +481,8 @@ public class UserAuthServiceImpl implements UserAuthService {
             }
             throw new CustomException(error != null ? error : "Failed to refresh token.");
         } catch (Exception e) {
-            log.error("Unexpected error while refreshing token for email {}: {}", refreshTokenRequestDto.getEmail(), e.getMessage(), e);
+            log.error("Unexpected error while refreshing token for email {}: {}", refreshTokenRequestDto.getEmail(),
+                    e.getMessage(), e);
             throw new CustomException("Unexpected error while refreshing token. Please try again later.");
         }
     }

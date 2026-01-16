@@ -1,11 +1,12 @@
 package com.consultancy.education.model;
 
-import com.consultancy.education.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "users")
@@ -45,9 +46,14 @@ public class User {
     @Column(name = "profile_picture")
     String profilePicture;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "role_id", nullable = false)
     Role role;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "user_additional_permissions", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
+    @Builder.Default
+    Set<Permission> additionalPermissions = new HashSet<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     LocalDateTime createdAt;

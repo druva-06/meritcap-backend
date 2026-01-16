@@ -4,7 +4,6 @@ import com.consultancy.education.DTOs.requestDTOs.user.UserRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.user.CounselorDto;
 import com.consultancy.education.DTOs.responseDTOs.user.PagedUserResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserResponseDto;
-import com.consultancy.education.enums.Role;
 import com.consultancy.education.exception.AlreadyExistException;
 import com.consultancy.education.exception.NotFoundException;
 import com.consultancy.education.exception.ValidationException;
@@ -146,17 +145,6 @@ public class UserController {
             @RequestParam(defaultValue = "10") int size) {
         log.info("Get users by role request received: role={}, page={}, size={}", role, page, size);
         try {
-            // Validate and convert role string to enum
-            Role userRole;
-            try {
-                userRole = Role.valueOf(role.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.error("Invalid role: {}", role);
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(new ApiFailureResponse<>(new ArrayList<>(),
-                                "Invalid role. Allowed values: STUDENT, ADMIN, COUNSELOR, COLLEGE, SUB_AGENT", 400));
-            }
-
             // Validate pagination parameters
             if (page < 0) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -167,7 +155,7 @@ public class UserController {
                         .body(new ApiFailureResponse<>(new ArrayList<>(), "Page size must be between 1 and 100", 400));
             }
 
-            PagedUserResponseDto response = userService.getUsersByRole(userRole, page, size);
+            PagedUserResponseDto response = userService.getUsersByRoleName(role.toUpperCase(), page, size);
             log.info("Successfully retrieved {} users for role: {} (page {}/{})",
                     response.getUsers().size(), role, page + 1, response.getTotalPages());
 
@@ -175,6 +163,75 @@ public class UserController {
                     .body(new ApiSuccessResponse<>(response, "Users fetched successfully", 200));
         } catch (Exception e) {
             log.error("Error fetching users by role: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @GetMapping("/all")
+    public ResponseEntity<?> getAllUsers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search) {
+        log.info("Get all users request received: page={}, size={}, search={}", page, size, search);
+        try {
+            // Validate pagination parameters
+            if (page < 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ApiFailureResponse<>(new ArrayList<>(), "Page number cannot be negative", 400));
+            }
+            if (size <= 0 || size > 100) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ApiFailureResponse<>(new ArrayList<>(), "Page size must be between 1 and 100", 400));
+            }
+
+            PagedUserResponseDto response = userService.getAllUsers(page, size, search);
+            log.info("Successfully retrieved {} users (page {}/{})",
+                    response.getUsers().size(), page + 1, response.getTotalPages());
+
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(response, "Users fetched successfully", 200));
+        } catch (Exception e) {
+            log.error("Error fetching all users: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @PatchMapping("/update-role")
+    public ResponseEntity<?> updateUserRole(@RequestParam Long userId, @RequestParam String roleName) {
+        log.info("Update user role request received: userId={}, roleName={}", userId, roleName);
+        try {
+            UserResponseDto responseDto = userService.updateUserRole(userId, roleName);
+            log.info("Successfully updated role for user: {}", userId);
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(responseDto, "User role updated successfully", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (Exception e) {
+            log.error("Error updating user role: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @DeleteMapping("/delete/{userId}")
+    public ResponseEntity<?> deleteUser(@PathVariable Long userId) {
+        log.info("Delete user request received: userId={}", userId);
+        try {
+            userService.deleteUser(userId);
+            log.info("Successfully deleted user: {}", userId);
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(null, "User deleted successfully", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (Exception e) {
+            log.error("Error deleting user: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }

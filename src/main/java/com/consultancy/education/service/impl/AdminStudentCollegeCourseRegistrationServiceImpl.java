@@ -6,7 +6,6 @@ import com.consultancy.education.DTOs.requestDTOs.studentCollegeCourseRegistrati
 import com.consultancy.education.DTOs.requestDTOs.studentCollegeCourseRegistration.RegistrationStatisticsDto;
 import com.consultancy.education.DTOs.responseDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationResponseDto;
 import com.consultancy.education.enums.ApprovalStatus;
-import com.consultancy.education.enums.Role;
 import com.consultancy.education.exception.NotFoundException;
 import com.consultancy.education.model.StudentCollegeCourseRegistration;
 import com.consultancy.education.model.User;
@@ -40,9 +39,9 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
             Long courseId,
             Integer intakeYear,
             String dateFrom,
-            String dateTo
-    ) {
-        log.info("Service: Fetching registrations with filters - status={}, studentId={}, collegeId={}, courseId={}, intakeYear={}, dateFrom={}, dateTo={}",
+            String dateTo) {
+        log.info(
+                "Service: Fetching registrations with filters - status={}, studentId={}, collegeId={}, courseId={}, intakeYear={}, dateFrom={}, dateTo={}",
                 status, studentId, collegeId, courseId, intakeYear, dateFrom, dateTo);
 
         List<StudentCollegeCourseRegistration> registrations = registrationRepository.findAll();
@@ -91,7 +90,8 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
 
     @Override
     public StudentCollegeCourseRegistrationResponseDto assignCounselor(AssignCounselorRequestDto requestDto) {
-        log.info("Service: Assigning counselorId={} to registrationId={}", requestDto.getCounselorId(), requestDto.getRegistrationId());
+        log.info("Service: Assigning counselorId={} to registrationId={}", requestDto.getCounselorId(),
+                requestDto.getRegistrationId());
 
         StudentCollegeCourseRegistration registration = registrationRepository.findById(requestDto.getRegistrationId())
                 .orElseThrow(() -> {
@@ -106,7 +106,7 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
                 });
 
         // Optional: check that user has the COUNSELOR role
-        if (!counselor.getRole().equals(Role.COUNSELOR)) {
+        if (counselor.getRole() == null || !"COUNSELOR".equalsIgnoreCase(counselor.getRole().getName())) {
             log.warn("Service: User id={} is not a counselor", requestDto.getCounselorId());
             throw new IllegalArgumentException("Selected user is not a counselor");
         }
@@ -121,7 +121,8 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
 
     @Override
     public StudentCollegeCourseRegistrationResponseDto decideOnRegistration(RegistrationDecisionRequestDto requestDto) {
-        log.info("Admin Service: Deciding on registrationId={} with decision={}", requestDto.getRegistrationId(), requestDto.getDecision());
+        log.info("Admin Service: Deciding on registrationId={} with decision={}", requestDto.getRegistrationId(),
+                requestDto.getDecision());
 
         StudentCollegeCourseRegistration registration = registrationRepository.findById(requestDto.getRegistrationId())
                 .orElseThrow(() -> {
@@ -189,8 +190,8 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
         long rejected = allRegs.stream().filter(r -> r.getApplicationStatus().name().equals("REJECTED")).count();
 
         // Group by College
-        Map<Long, List<StudentCollegeCourseRegistration>> byCollege =
-                allRegs.stream().collect(Collectors.groupingBy(r -> r.getCollegeCourseSnapshot().getCollegeId()));
+        Map<Long, List<StudentCollegeCourseRegistration>> byCollege = allRegs.stream()
+                .collect(Collectors.groupingBy(r -> r.getCollegeCourseSnapshot().getCollegeId()));
 
         List<RegistrationStatisticsDto.StatusCount> collegeCounts = byCollege.entrySet().stream()
                 .map(e -> RegistrationStatisticsDto.StatusCount.builder()
@@ -201,8 +202,8 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
                 .collect(Collectors.toList());
 
         // Group by Course
-        Map<Long, List<StudentCollegeCourseRegistration>> byCourse =
-                allRegs.stream().collect(Collectors.groupingBy(r -> r.getCollegeCourseSnapshot().getCourseId()));
+        Map<Long, List<StudentCollegeCourseRegistration>> byCourse = allRegs.stream()
+                .collect(Collectors.groupingBy(r -> r.getCollegeCourseSnapshot().getCourseId()));
 
         List<RegistrationStatisticsDto.StatusCount> courseCounts = byCourse.entrySet().stream()
                 .map(e -> RegistrationStatisticsDto.StatusCount.builder()
@@ -213,8 +214,8 @@ public class AdminStudentCollegeCourseRegistrationServiceImpl implements AdminSt
                 .collect(Collectors.toList());
 
         // Group by Intake Year
-        Map<Integer, List<StudentCollegeCourseRegistration>> byYear =
-                allRegs.stream().collect(Collectors.groupingBy(StudentCollegeCourseRegistration::getApplicationYear));
+        Map<Integer, List<StudentCollegeCourseRegistration>> byYear = allRegs.stream()
+                .collect(Collectors.groupingBy(StudentCollegeCourseRegistration::getApplicationYear));
 
         List<RegistrationStatisticsDto.YearCount> yearCounts = byYear.entrySet().stream()
                 .map(e -> RegistrationStatisticsDto.YearCount.builder()

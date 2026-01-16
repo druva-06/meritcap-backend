@@ -1,8 +1,5 @@
 package com.consultancy.education.DTOs.requestDTOs.user;
 
-import com.consultancy.education.enums.Role;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.validation.constraints.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -24,11 +21,9 @@ public class UserRequestDto {
     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be 10 digits")
     String phoneNumber;
 
-
     @Pattern(regexp = "^(http|https)://.*$", message = "Invalid profile picture URL")
     String profilePicture;
 
-    @Enumerated(EnumType.STRING)
-    @NotNull(message = "User type is required")
-    Role role;
+    @NotBlank(message = "Role name is required")
+    String roleName;
 }

@@ -4,7 +4,7 @@ import com.consultancy.education.DTOs.requestDTOs.user.UserRequestDto;
 import com.consultancy.education.DTOs.responseDTOs.user.CounselorDto;
 import com.consultancy.education.DTOs.responseDTOs.user.PagedUserResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserResponseDto;
-import com.consultancy.education.enums.Role;
+import com.consultancy.education.model.Role;
 import jakarta.validation.Valid;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -22,4 +22,12 @@ public interface UserService {
     List<CounselorDto> getAllCounselors();
 
     PagedUserResponseDto getUsersByRole(Role role, int page, int size);
+
+    PagedUserResponseDto getUsersByRoleName(String roleName, int page, int size);
+
+    PagedUserResponseDto getAllUsers(int page, int size, String search);
+
+    void deleteUser(Long userId);
+
+    UserResponseDto updateUserRole(Long userId, String roleName);
 }

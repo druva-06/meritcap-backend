@@ -1,6 +1,5 @@
 package com.consultancy.education.DTOs.responseDTOs.user;
 
-import com.consultancy.education.enums.Role;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -32,5 +31,5 @@ public class UserResponseDto {
     @Schema(description = "User profile picture")
     String profilePicture;
     @Schema(description = "User Role")
-    Role role;
+    String role;
 }

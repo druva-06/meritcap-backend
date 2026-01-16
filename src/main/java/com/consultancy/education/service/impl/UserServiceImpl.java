@@ -5,22 +5,24 @@ import com.consultancy.education.DTOs.responseDTOs.user.CounselorDto;
 import com.consultancy.education.DTOs.responseDTOs.user.PagedUserResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserResponseDto;
 import com.consultancy.education.enums.DocumentType;
-import com.consultancy.education.enums.Role;
 import com.consultancy.education.exception.NotFoundException;
+import com.consultancy.education.model.Role;
 import com.consultancy.education.model.User;
+import com.consultancy.education.repository.RoleRepository;
 import com.consultancy.education.repository.StudentRepository;
 import com.consultancy.education.repository.UserRepository;
 import com.consultancy.education.service.UserService;
 import com.consultancy.education.transformer.UserTransformer;
 import jakarta.annotation.PostConstruct;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -38,9 +40,10 @@ import java.util.stream.Collectors;
 @Service
 public class UserServiceImpl implements UserService {
 
-    private static final Log log = LogFactory.getLog(UserServiceImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
+    private final RoleRepository roleRepository;
     private S3Client s3Client;
 
     @Value("${aws.s3.bucketName}")
@@ -52,9 +55,11 @@ public class UserServiceImpl implements UserService {
     @Value("${aws.s3.secretAccessKey}")
     private String secretAccessKey;
 
-    public UserServiceImpl(UserRepository userRepository, StudentRepository studentRepository) {
+    public UserServiceImpl(UserRepository userRepository, StudentRepository studentRepository,
+            RoleRepository roleRepository) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
+        this.roleRepository = roleRepository;
     }
 
     @PostConstruct
@@ -169,7 +174,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public List<CounselorDto> getAllCounselors() {
         log.info("Fetching all counselors");
-        List<User> counselors = userRepository.findByRole(Role.COUNSELOR);
+        List<User> counselors = userRepository.findByRoleName("COUNSELOR");
         log.info("Found " + counselors.size() + " counselors");
 
         List<CounselorDto> counselorDtos = counselors.stream()
@@ -187,7 +192,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public PagedUserResponseDto getUsersByRole(Role role, int page, int size) {
-        log.info("Fetching users by role: " + role + " with page: " + page + " and size: " + size);
+        log.info("Fetching users by role: " + role.getName() + " with page: " + page + " and size: " + size);
 
         // Create pageable with sorting by createdAt descending
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -211,10 +216,112 @@ public class UserServiceImpl implements UserService {
                 .last(userPage.isLast())
                 .build();
 
-        log.info("Found " + userDtos.size() + " users for role: " + role + " (page " + (page + 1) + "/"
+        log.info("Found " + userDtos.size() + " users for role: " + role.getName() + " (page " + (page + 1) + "/"
                 + userPage.getTotalPages() + ")");
 
         return response;
+    }
+
+    @Override
+    public PagedUserResponseDto getUsersByRoleName(String roleName, int page, int size) {
+        log.info("Fetching users by role name: " + roleName + " with page: " + page + " and size: " + size);
+
+        // Create pageable with sorting by createdAt descending
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        // Fetch paginated users
+        Page<User> userPage = userRepository.findByRoleName(roleName, pageable);
+
+        // Convert to DTOs
+        List<UserResponseDto> userDtos = userPage.getContent().stream()
+                .map(UserTransformer::toUserResponseDto)
+                .collect(Collectors.toList());
+
+        // Build paginated response
+        PagedUserResponseDto response = PagedUserResponseDto.builder()
+                .users(userDtos)
+                .currentPage(userPage.getNumber())
+                .totalPages(userPage.getTotalPages())
+                .totalElements(userPage.getTotalElements())
+                .pageSize(userPage.getSize())
+                .first(userPage.isFirst())
+                .last(userPage.isLast())
+                .build();
+
+        log.info("Found " + userDtos.size() + " users for role: " + roleName + " (page " + (page + 1) + "/"
+                + userPage.getTotalPages() + ")");
+
+        return response;
+    }
+
+    @Override
+    public PagedUserResponseDto getAllUsers(int page, int size, String search) {
+        log.info("Fetching all users with page: " + page + ", size: " + size + ", search: " + search);
+
+        // Create pageable with sorting by createdAt descending
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<User> userPage;
+        if (search != null && !search.trim().isEmpty()) {
+            // Search in firstName, lastName, email, or username
+            userPage = userRepository.searchUsers(search.trim(), pageable);
+        } else {
+            // Fetch all users
+            userPage = userRepository.findAll(pageable);
+        }
+
+        // Convert to DTOs
+        List<UserResponseDto> userDtos = userPage.getContent().stream()
+                .map(UserTransformer::toUserResponseDto)
+                .collect(Collectors.toList());
+
+        // Build paginated response
+        PagedUserResponseDto response = PagedUserResponseDto.builder()
+                .users(userDtos)
+                .currentPage(userPage.getNumber())
+                .totalPages(userPage.getTotalPages())
+                .totalElements(userPage.getTotalElements())
+                .pageSize(userPage.getSize())
+                .first(userPage.isFirst())
+                .last(userPage.isLast())
+                .build();
+
+        log.info("Found " + userDtos.size() + " users (page " + (page + 1) + "/" + userPage.getTotalPages() + ")");
+
+        return response;
+    }
+
+    @Override
+    public void deleteUser(Long userId) {
+        log.info("Deleting user with ID: " + userId);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + userId));
+
+        userRepository.delete(user);
+        log.info("User deleted successfully: " + userId);
+    }
+
+    @Override
+    @Transactional
+    public UserResponseDto updateUserRole(Long userId, String roleName) {
+        log.info("Updating role for user: {}, new role: {}", userId, roleName);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found with id: " + userId));
+
+        Role role = roleRepository.findByName(roleName.toUpperCase())
+                .orElseThrow(() -> new NotFoundException("Role not found with name: " + roleName));
+
+        if (!role.getIsActive()) {
+            throw new IllegalArgumentException("Cannot assign inactive role: " + roleName);
+        }
+
+        user.setRole(role);
+        User updatedUser = userRepository.save(user);
+
+        log.info("User role updated successfully: userId={}, newRole={}", userId, roleName);
+        return UserTransformer.toUserResponseDto(updatedUser);
     }
 
 }

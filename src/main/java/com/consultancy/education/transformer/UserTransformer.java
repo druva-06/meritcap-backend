@@ -13,7 +13,7 @@ public class UserTransformer {
         userResponseDto.setLastName(user.getLastName());
         userResponseDto.setPhoneNumber(user.getPhoneNumber());
         userResponseDto.setUsername(user.getUsername());
-        userResponseDto.setRole(user.getRole());
+        userResponseDto.setRole(user.getRole() != null ? user.getRole().getName() : null);
         userResponseDto.setProfilePicture(user.getProfilePicture());
         userAuthLoginResponseDto.setUser(userResponseDto);
     }
@@ -27,7 +27,7 @@ public class UserTransformer {
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
                 .profilePicture(user.getProfilePicture())
-                .role(user.getRole())
+                .role(user.getRole() != null ? user.getRole().getName() : null)
                 .build();
     }
 
