@@ -62,11 +62,7 @@ springdoc:
     enabled: false
 
 cors:
-  allowed-origins:
-    - https://meritcap.com
-    - https://www.meritcap.com
-    - https://admin.meritcap.com
-    - https://api.meritcap.com
+  allowed-origins: https://meritcap.com,https://www.meritcap.com,https://admin.meritcap.com,https://api.meritcap.com
 
 logging:
   level:

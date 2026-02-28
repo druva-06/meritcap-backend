@@ -19,6 +19,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -32,7 +33,7 @@ public class SecurityConfig {
     private String region;
 
     @Value("${cors.allowed-origins}")
-    private List<String> allowedOrigins;
+    private String allowedOriginsStr;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/auth/signup",
@@ -109,7 +110,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         // DEV: set to your dev origin. If you need cookies/auth, use explicit origin
         // and allowCredentials(true).
-        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedOrigins(Arrays.asList(allowedOriginsStr.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         // Explicitly allow Authorization so browser preflight permits the header
         configuration.setAllowedHeaders(List.of(
