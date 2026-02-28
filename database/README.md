@@ -1,59 +1,69 @@
 # Database Documentation
 
-This directory contains database-related files for the CAP Backend project.
+This directory contains database migrations and seed data for the MeritCap backend.
 
 ## Structure
 
 ```
 database/
-├── README.md           # This file
-└── migrations/         # SQL migration scripts
-    └── 001_create_leads_table.sql
+├── README.md
+├── migrations/          # Schema migration scripts (run once, in order)
+│   ├── 001_create_leads_table.sql
+│   ├── 002_create_dynamic_roles_table_mysql.sql
+│   ├── 003_create_permissions_tables.sql
+│   ├── 004_assign_default_role_permissions.sql
+│   ├── 005_add_portal_unification_permissions.sql
+│   ├── 006_assign_portal_permissions_to_roles.sql
+│   ├── 007_create_invited_users_table.sql
+│   ├── 008_insert_comprehensive_permissions.sql
+│   ├── 009_create_menu_permissions_table.sql
+│   ├── 010_add_permission_hierarchy_columns.sql
+│   └── 011_populate_permission_hierarchy.sql
+└── seed/                # Initial data required for the app to function
+    ├── 001_seed_roles.sql
+    ├── 002_seed_permissions.sql
+    ├── 003_seed_role_permissions.sql
+    └── run_seed.sh
 ```
 
-## Migrations
+## Initial Setup (New Database)
 
-Migration files are numbered sequentially and should be executed in order.
+After creating the database, run migrations first, then seed data:
 
-### Naming Convention
+```bash
+# 1. Run all migrations in order
+for f in database/migrations/*.sql; do
+  mysql -u <user> -p meritcap < "$f"
+done
 
+# 2. Seed required data (roles, permissions, role-permission mappings)
+cd database/seed
+chmod +x run_seed.sh
+./run_seed.sh
 ```
-{number}_{description}.sql
-```
 
-Example: `001_create_leads_table.sql`
+The seed scripts use `INSERT ... ON DUPLICATE KEY UPDATE` so they are safe to re-run.
 
-### Current Migrations
+## Seed Data
 
-1. **001_create_leads_table.sql** - Creates the leads table with all necessary indexes and foreign key constraints
+The application requires these rows to exist before users can sign up or use the system:
+
+| Script | What it seeds | Count |
+|--------|--------------|-------|
+| `001_seed_roles.sql` | System roles (ADMIN, COUNSELOR, STUDENT, COLLEGE, SUB_AGENT) | 5 |
+| `002_seed_permissions.sql` | Permissions across 18 categories | 178 |
+| `003_seed_role_permissions.sql` | Maps permissions to each role | ~277 mappings |
 
 ## Running Migrations
 
-### Manually
-
-Execute the SQL files in order against your database:
+Execute SQL files in order against the database:
 
 ```bash
-mysql -u username -p database_name < database/migrations/001_create_leads_table.sql
+mysql -u <user> -p meritcap < database/migrations/001_create_leads_table.sql
 ```
-
-### Using Flyway or Liquibase
-
-If using a migration tool, place these files in the appropriate directory for your tool.
-
-## Database Configuration
-
-Database configuration is managed through Spring Boot application properties:
-
-- `application.yaml` - Default configuration
-- `application-dev.properties` - Development environment
-- `application-prod.properties` - Production environment
-- `application-uat.yaml` - UAT environment
 
 ## Best Practices
 
-1. **Never modify existing migrations** - Create new ones for changes
-2. **Test migrations** on development database first
-3. **Include rollback scripts** when possible
-4. **Document breaking changes** in migration comments
-5. **Keep migrations idempotent** when possible
+1. **Never modify existing migrations** — create new numbered scripts instead
+2. **Test migrations** on a dev database first
+3. **Keep migrations idempotent** when possible (use `IF NOT EXISTS`, `ON DUPLICATE KEY UPDATE`)

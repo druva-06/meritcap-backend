@@ -1,292 +1,111 @@
-# MeritCap (CAP) Backend
+# MeritCap Backend
 
-A comprehensive backend system for managing educational consultancy services, student applications, and lead generation.
+Spring Boot REST API for MeritCap — an educational consultancy platform for managing students, applications, leads, colleges, and courses.
 
-## Project Overview
+## Tech Stack
 
-CAP Backend is a Spring Boot application that provides REST APIs for:
-
-- User authentication and authorization (Admin, Counselor, Student, College)
-- Lead management and tracking
-- Student profile management
-- College and course information
-- Application processing
-- Communication tracking
-
-## Technology Stack
-
-- **Framework**: Spring Boot 3.3.3
-- **Language**: Java 17
-- **Database**: MySQL
-- **Authentication**: AWS Cognito + JWT
-- **Build Tool**: Maven
-- **Containerization**: Docker
-- **Cloud**: AWS (Secrets Manager, ECS)
+- **Framework**: Spring Boot 3.3.3 / Java 17
+- **Database**: MySQL 8.0
+- **Auth**: AWS Cognito + JWT
+- **Build**: Maven
+- **Deploy**: Docker → GHCR → MicroK8s on VPS
+- **CI/CD**: GitHub Actions
 
 ## Project Structure
 
 ```
-meritcap-backend/
-├── src/
-│   ├── main/
-│   │   ├── java/com/meritcap/
-│   │   │   ├── api/              # External API integrations
-│   │   │   ├── config/           # Configuration classes
-│   │   │   ├── controller/       # REST controllers
-│   │   │   ├── DTOs/             # Data Transfer Objects
-│   │   │   ├── enums/            # Enumerations
-│   │   │   ├── exception/        # Custom exceptions
-│   │   │   ├── model/            # JPA entities
-│   │   │   ├── repository/       # Data access layer
-│   │   │   ├── service/          # Business logic
-│   │   │   ├── transformer/      # DTO ↔ Entity converters
-│   │   │   └── utils/            # Utility classes
-│   │   └── resources/
-│   │       ├── application.yaml
-│   │       ├── application-dev.properties
-│   │       ├── application-prod.properties
-│   │       └── application-uat.yaml
-│   └── test/                     # Test classes
+cap-backend/
+├── src/main/java/com/meritcap/
+│   ├── config/           # Security, CORS, Cognito config
+│   ├── controller/       # REST controllers
+│   ├── DTOs/             # Request & response DTOs
+│   ├── model/            # JPA entities
+│   ├── repository/       # Spring Data repositories
+│   ├── service/impl/     # Business logic
+│   ├── transformer/      # DTO ↔ Entity converters
+│   └── utils/            # Helpers
+├── src/main/resources/
+│   ├── application.yaml           # Shared config
+│   ├── application-dev.yaml       # Local dev (env vars)
+│   ├── application-uat.yaml       # UAT
+│   └── application-prod.yaml      # Production (K8s secrets)
 ├── database/
-│   ├── README.md
-│   └── migrations/               # SQL migration scripts
-├── docs/
-│   ├── README.md
-│   ├── api/                      # API documentation
-│   │   └── LEAD_API_DOCUMENTATION.md
-│   └── models/                   # Data model documentation
-│       └── LEAD_MODEL_DESIGN.md
-├── k8s/                          # Kubernetes deployment files
-├── docker-compose.yml
-├── Dockerfile
-├── buildspec.yml                 # AWS CodeBuild spec
+│   ├── migrations/       # Schema migration SQL (001–011)
+│   └── seed/             # Required seed data (roles, permissions)
+├── docs/                 # Architecture, deployment, dev guide, API ref
+├── k8s/                  # Kubernetes manifests
+├── .github/workflows/    # CI/CD pipeline
+├── Dockerfile            # Multi-stage build
 └── pom.xml
 ```
 
-## Getting Started
-
-### Prerequisites
-
-- Java 17 or higher
-- Maven 3.6+
-- MySQL 8.0+
-- Docker (optional, for containerized deployment)
-
-### Configuration
-
-1. **Database Configuration**
-
-   Update database credentials in `src/main/resources/application-{env}.properties`:
-
-   ```properties
-   spring.datasource.url=jdbc:mysql://localhost:3306/cap_db
-   spring.datasource.username=your_username
-   spring.datasource.password=your_password
-   ```
-
-2. **AWS Cognito Configuration**
-
-   Set up Cognito credentials in application properties or AWS Secrets Manager.
-
-3. **Environment Variables**
-
-   Required environment variables:
-
-   - `AWS_REGION`
-   - `COGNITO_USER_POOL_ID`
-   - `COGNITO_CLIENT_ID`
-   - `COGNITO_CLIENT_SECRET`
-
-### Running the Application
-
-#### Local Development
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd meritcap-backend
+# 1. Clone
+git clone git@github.com:druva-06/cap-backend.git && cd cap-backend
 
-# Run with Maven
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+# 2. Set up credentials
+cp .env.example .env   # fill in values
 
-# Or build and run JAR
-mvn clean package
-java -jar target/education-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
+# 3. Start SSH tunnel to VPS MySQL
+./start-db-tunnel.sh
+
+# 4. Run
+mvn spring-boot:run    # → http://localhost:8080/api/swagger-ui/index.html
 ```
 
-#### Using Docker
+See [docs/DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md) for full setup instructions.
 
-```bash
-# Build Docker image
-docker build -t meritcap-backend .
+## Roles
 
-# Run container
-docker run -p 8080:8080 meritcap-backend
-```
+| Role | Description |
+|------|-------------|
+| ADMIN | Full system access |
+| COUNSELOR | Manage leads and students |
+| STUDENT | Own profile and applications |
+| COLLEGE | College info and applications |
+| SUB_AGENT | Limited partner access |
 
-#### Using Docker Compose
+## API
 
-```bash
-docker-compose up
-```
+All endpoints are under `/api`. Auth required via `Authorization: Bearer <jwt>` header.
 
-## API Documentation
+| Group | Path | Description |
+|-------|------|-------------|
+| Auth | `/api/auth/*` | Signup, login, password reset |
+| Students | `/api/students/*` | Student profiles |
+| Leads | `/api/leads/*` | Lead management |
+| Admin | `/api/admin/*` | Admin operations |
+| Colleges | `/api/colleges/*` | College & course data |
 
-API documentation is available in the `/docs/api` directory.
-
-### Base URL
-
-- **Development**: `http://localhost:8080`
-- **UAT**: `http://uat.example.com`
-- **Production**: `https://api.example.com`
-
-### Authentication
-
-All API endpoints (except public ones) require JWT authentication:
-
-```bash
-Authorization: Bearer <jwt_token>
-```
-
-### Available APIs
-
-- **Auth APIs**: `/auth/*` - User authentication and registration
-- **Lead APIs**: `/leads/*` - Lead management
-- **Student APIs**: `/students/*` - Student profile management
-- **Admin APIs**: `/admin/*` - Administrative operations
-
-See [API Documentation](docs/api/) for detailed endpoint information.
+Swagger UI: `http://localhost:8080/api/swagger-ui/index.html`
 
 ## Database
 
-### Migrations
-
-Database migration scripts are located in `database/migrations/`.
-
-Run migrations in order:
+Run migrations then seed data on a fresh database:
 
 ```bash
-mysql -u username -p database_name < database/migrations/001_create_leads_table.sql
+# Migrations (schema)
+for f in database/migrations/*.sql; do mysql -u <user> -p meritcap < "$f"; done
+
+# Seed data (roles, permissions — required for app to function)
+cd database/seed && ./run_seed.sh
 ```
 
-See [Database Documentation](database/README.md) for more details.
-
-## Security
-
-- **Authentication**: AWS Cognito with JWT tokens
-- **Authorization**: Role-based access control (RBAC)
-- **Data Encryption**: Sensitive data encrypted at rest and in transit
-- **Secrets Management**: AWS Secrets Manager
-
-### Roles
-
-- `ADMIN` - Full system access
-- `COUNSELOR` - Manage leads and students
-- `STUDENT` - Access own profile and applications
-- `COLLEGE` - Manage college information and applications
+See [database/README.md](database/README.md) for details.
 
 ## Deployment
 
-### AWS Deployment
+Production runs on a VPS (82.112.234.51) with MicroK8s. Pushes to `main` auto-deploy via GitHub Actions.
 
-The application is deployed on AWS using:
-
-- **ECS**: Container orchestration
-- **RDS**: MySQL database
-- **Secrets Manager**: Credential management
-- **CodeBuild**: CI/CD pipeline
-
-Deployment configuration is in `buildspec.yml`.
-
-### Kubernetes Deployment
-
-Kubernetes manifests are in the `k8s/` directory:
-
-```bash
-kubectl apply -f k8s/meritcap-deployment.yaml
-kubectl apply -f k8s/meritcap-service.yaml
-```
-
-## Development Guidelines
-
-### Code Style
-
-- Follow Java naming conventions
-- Use Lombok annotations to reduce boilerplate
-- Write meaningful commit messages
-- Add appropriate logging
-
-### Adding New Features
-
-1. Create entity in `model/`
-2. Create repository in `repository/`
-3. Create DTOs in `DTOs/`
-4. Implement service in `service/impl/`
-5. Create controller in `controller/`
-6. Add transformer in `transformer/`
-7. Write tests
-8. Document API in `docs/api/`
-9. Document model in `docs/models/`
-10. Create migration script in `database/migrations/`
-
-## Testing
-
-```bash
-# Run all tests
-mvn test
-
-# Run specific test class
-mvn test -Dtest=UserAuthServiceTest
-
-# Run with coverage
-mvn clean verify
-```
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full deployment guide.
 
 ## Documentation
 
-Comprehensive documentation is available in the `/docs` directory:
-
-### 📖 Core Documentation
-
-- **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture, design patterns, and technical decisions
-- **[Database Schema](docs/DATABASE_SCHEMA.md)** - Complete database documentation with ERD and optimization tips
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Deploy to Docker, Kubernetes, or AWS ECS
-- **[Development Guide](docs/DEVELOPMENT_GUIDE.md)** - Setup, workflow, and best practices
-
-### 🔌 API Documentation
-
-- **[API Reference](docs/api/API_REFERENCE.md)** - Complete API endpoint reference
-- **[Lead API](docs/api/LEAD_API_DOCUMENTATION.md)** - Lead management API details
-
-### 📊 Data Models
-
-- **[Lead Model Design](docs/models/LEAD_MODEL_DESIGN.md)** - Lead entity architecture
-
-### 📝 Additional Resources
-
-- **[Database README](database/README.md)** - Database migrations and maintenance
-- **[Documentation Index](docs/README.md)** - Complete documentation overview
-
-**Total Documentation**: 3,900+ lines covering architecture, APIs, deployment, and development
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Write/update tests
-4. Update documentation
-5. Submit a pull request
-
-## License
-
-[Add License Information]
-
-## Contact
-
-[Add Contact Information]
-
-## Additional Resources
-
-- [Spring Boot Documentation](https://docs.spring.io/spring-boot/docs/current/reference/htmlsingle/)
-- [AWS Cognito Documentation](https://docs.aws.amazon.com/cognito/)
-- [MySQL Documentation](https://dev.mysql.com/doc/)
+- [Development Guide](docs/DEVELOPMENT_GUIDE.md) — Local setup, SSH tunnel, IDE config
+- [Architecture](docs/ARCHITECTURE.md) — System design and patterns
+- [Database Schema](docs/DATABASE_SCHEMA.md) — Tables and relationships
+- [Deployment](docs/DEPLOYMENT.md) — VPS, K8s, CI/CD
+- [API Reference](docs/api/API_REFERENCE.md) — Complete endpoint docs
+- [Dev Email Guide](docs/DEV_MODE_EMAIL_GUIDE.md) — Testing emails without SMTP
