@@ -109,7 +109,9 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(
                 List.of(
                         "http://localhost:3000",
+                        "http://localhost:3001",
                         "http://127.0.0.1:3000",
+                        "http://127.0.0.1:3001",
                         "https://meritcap.com",
                         "https://www.meritcap.com",
                         "https://admin.meritcap.com",

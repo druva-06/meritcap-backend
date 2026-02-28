@@ -1,0 +1,56 @@
+# ============================================================
+# DEV Profile - Connects to DB via SSH tunnel
+# ============================================================
+# BEFORE RUNNING:
+#   1. Copy .env.example to .env and fill in the values
+#   2. Source it:  source .env
+#   3. Start SSH tunnel:  ./start-db-tunnel.sh
+#   4. Run backend:  ./mvnw spring-boot:run
+# ============================================================
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/meritcap?allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:disabled}
+    password: ${MAIL_PASSWORD:disabled}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+aws:
+  cognito:
+    userPoolId: ${COGNITO_USER_POOL_ID}
+    clientId: ${COGNITO_CLIENT_ID}
+    clientSecret: ${COGNITO_CLIENT_SECRET}
+    region: ${AWS_REGION:ap-south-2}
+    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
+    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
+  s3:
+    bucketName: ${S3_BUCKET_NAME}
+    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
+    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
+  region: ${AWS_REGION:ap-south-2}
+
+app:
+  name: MeritCap
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
+  email:
+    sendActualEmails: ${SEND_ACTUAL_EMAILS:false}
+
+logging:
+  level:
+    root: INFO
+    com.meritcap: DEBUG
+    org.springframework: WARN
