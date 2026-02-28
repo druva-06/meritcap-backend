@@ -20,6 +20,7 @@ spec:
       containers:
         - name: cap-backend
           image: ghcr.io/druva-06/cap-backend:prod-latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           envFrom:

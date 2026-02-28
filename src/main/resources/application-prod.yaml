@@ -1,0 +1,58 @@
+# PROD configuration - uses env vars from K8s secrets
+# No AWS Secrets Manager loading in prod (secrets injected via K8s)
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:disabled}
+    password: ${MAIL_PASSWORD:disabled}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: ${MAIL_HOST:smtp.gmail.com}
+
+aws:
+  cognito:
+    userPoolId: ${COGNITO_USER_POOL_ID}
+    clientId: ${COGNITO_CLIENT_ID}
+    clientSecret: ${COGNITO_CLIENT_SECRET}
+    region: ${AWS_REGION:ap-south-2}
+    accessKeyId: ${IAM_DRUVA_CAP_ACCESS_KEY_ID}
+    secretAccessKey: ${IAM_DRUVA_CAP_SECRET_ACCESS_KEY}
+  s3:
+    bucketName: ${S3_BUCKET_NAME}
+    accessKeyId: ${IAM_DRUVA_CAP_ACCESS_KEY_ID}
+    secretAccessKey: ${IAM_DRUVA_CAP_SECRET_ACCESS_KEY}
+  region: ${AWS_REGION:ap-south-2}
+  # No aws.secret.names — secrets come from K8s, not AWS Secrets Manager
+
+app:
+  name: Career Advice Point
+  frontend:
+    url: ${FRONTEND_URL:https://meritcap.com}
+  email:
+    sendActualEmails: ${SEND_ACTUAL_EMAILS:false}
+
+management:
+  health:
+    mail:
+      enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.consultancy.education: INFO
+    org.springframework: WARN

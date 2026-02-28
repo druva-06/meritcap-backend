@@ -20,6 +20,7 @@ spec:
       containers:
         - name: wowcap-user
           image: ghcr.io/druva-06/wowcap-user:prod-latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           resources:

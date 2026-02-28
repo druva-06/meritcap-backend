@@ -10,12 +10,12 @@ spec:
   ingressClassName: public
   tls:
     - hosts:
-        - wowcap.com
-        - admin.wowcap.com
-        - api.wowcap.com
+        - meritcap.com
+        - admin.meritcap.com
+        - api.meritcap.com
       secretName: cloudflare-tls
   rules:
-    - host: wowcap.com
+    - host: meritcap.com
       http:
         paths:
           - path: /
@@ -25,7 +25,7 @@ spec:
                 name: wowcap-user-svc
                 port:
                   number: 3000
-    - host: admin.wowcap.com
+    - host: admin.meritcap.com
       http:
         paths:
           - path: /
@@ -35,7 +35,7 @@ spec:
                 name: wowcap-admin-svc
                 port:
                   number: 3000
-    - host: api.wowcap.com
+    - host: api.meritcap.com
       http:
         paths:
           - path: /

@@ -42,6 +42,7 @@ public class SecurityConfig {
             "/auth/confirmVerificationCode",
             "/auth/confirmForgotPassword",
             "/auth/refresh",
+            "/actuator/**",
             "/swagger-ui/**",
             "/v3/**"
     };
