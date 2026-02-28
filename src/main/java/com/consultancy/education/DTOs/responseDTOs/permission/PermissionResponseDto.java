@@ -17,6 +17,9 @@ public class PermissionResponseDto {
     private String displayName;
     private String description;
     private String category;
+    private String dashboard;
+    private String submenu;
+    private String feature;
     private Boolean isActive;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

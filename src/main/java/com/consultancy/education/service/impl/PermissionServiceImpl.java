@@ -2,6 +2,7 @@ package com.consultancy.education.service.impl;
 
 import com.consultancy.education.DTOs.requestDTOs.permission.AssignPermissionsRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.permission.PermissionRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.permission.PermissionHierarchyDto;
 import com.consultancy.education.DTOs.responseDTOs.permission.PermissionResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserPermissionsResponseDto;
 import com.consultancy.education.exception.AlreadyExistException;
@@ -20,9 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -256,5 +255,110 @@ public class PermissionServiceImpl implements PermissionService {
                 } else {
                         log.info("No matching permissions found to revoke for role: {}", roleId);
                 }
+        }
+
+        // ============================================
+        // HIERARCHY METHODS
+        // ============================================
+
+        @Override
+        public List<String> getAllDashboards() {
+                log.debug("Fetching all unique dashboards");
+                return permissionRepository.findAll().stream()
+                                .map(Permission::getDashboard)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .sorted()
+                                .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<String> getSubmenusByDashboard(String dashboard) {
+                log.debug("Fetching submenus for dashboard: {}", dashboard);
+                return permissionRepository.findAll().stream()
+                                .filter(p -> dashboard.equals(p.getDashboard()))
+                                .map(Permission::getSubmenu)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .sorted()
+                                .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<String> getFeaturesByDashboardAndSubmenu(String dashboard, String submenu) {
+                log.debug("Fetching features for dashboard: {} and submenu: {}", dashboard, submenu);
+                return permissionRepository.findAll().stream()
+                                .filter(p -> dashboard.equals(p.getDashboard()))
+                                .filter(p -> submenu == null ? p.getSubmenu() == null
+                                                : submenu.equals(p.getSubmenu()))
+                                .map(Permission::getFeature)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .sorted()
+                                .collect(Collectors.toList());
+        }
+
+        @Override
+        public List<PermissionHierarchyDto> getPermissionHierarchy() {
+                log.info("Building complete permission hierarchy");
+
+                List<Permission> allPermissions = permissionRepository.findAll();
+
+                // Group by dashboard
+                Map<String, List<Permission>> dashboardMap = allPermissions.stream()
+                                .filter(p -> p.getDashboard() != null)
+                                .collect(Collectors.groupingBy(Permission::getDashboard));
+
+                List<PermissionHierarchyDto> hierarchy = new ArrayList<>();
+
+                for (Map.Entry<String, List<Permission>> dashboardEntry : dashboardMap.entrySet()) {
+                        String dashboard = dashboardEntry.getKey();
+                        List<Permission> dashboardPermissions = dashboardEntry.getValue();
+
+                        // Group by submenu
+                        Map<String, List<Permission>> submenuMap = dashboardPermissions.stream()
+                                        .collect(Collectors.groupingBy(p -> p.getSubmenu() != null ? p.getSubmenu()
+                                                        : ""));
+
+                        List<PermissionHierarchyDto.SubmenuDto> submenus = new ArrayList<>();
+
+                        for (Map.Entry<String, List<Permission>> submenuEntry : submenuMap.entrySet()) {
+                                String submenu = submenuEntry.getKey();
+                                List<Permission> submenuPermissions = submenuEntry.getValue();
+
+                                List<PermissionHierarchyDto.FeatureDto> features = submenuPermissions.stream()
+                                                .map(p -> PermissionHierarchyDto.FeatureDto.builder()
+                                                                .feature(p.getFeature())
+                                                                .permissionId(p.getId())
+                                                                .permissionName(p.getName())
+                                                                .displayName(p.getDisplayName())
+                                                                .isActive(p.getIsActive())
+                                                                .build())
+                                                .sorted(Comparator.comparing(
+                                                                PermissionHierarchyDto.FeatureDto::getFeature))
+                                                .collect(Collectors.toList());
+
+                                submenus.add(PermissionHierarchyDto.SubmenuDto.builder()
+                                                .submenu(submenu.isEmpty() ? null : submenu)
+                                                .features(features)
+                                                .build());
+                        }
+
+                        // Sort submenus - nulls first (main menu items), then alphabetically
+                        submenus.sort(Comparator.comparing(
+                                        PermissionHierarchyDto.SubmenuDto::getSubmenu,
+                                        Comparator.nullsFirst(Comparator.naturalOrder())));
+
+                        hierarchy.add(PermissionHierarchyDto.builder()
+                                        .dashboard(dashboard)
+                                        .submenus(submenus)
+                                        .build());
+                }
+
+                // Sort by dashboard name
+                hierarchy.sort(Comparator.comparing(PermissionHierarchyDto::getDashboard));
+
+                log.info("Permission hierarchy built successfully with {} dashboards", hierarchy.size());
+                return hierarchy;
         }
 }

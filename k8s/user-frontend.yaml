@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wowcap-user
+  namespace: prod
+  labels:
+    app: wowcap-user
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wowcap-user
+  template:
+    metadata:
+      labels:
+        app: wowcap-user
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: wowcap-user
+          image: ghcr.io/druva-06/wowcap-user:prod-latest
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wowcap-user-svc
+  namespace: prod
+spec:
+  selector:
+    app: wowcap-user
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

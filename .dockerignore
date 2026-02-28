@@ -1,0 +1,15 @@
+target
+.git
+.gitignore
+.idea
+.vscode
+*.md
+.env*
+docker-compose.yml
+k8s/
+.github/
+database/
+docs/
+*.iml
+.DS_Store
+.mvn

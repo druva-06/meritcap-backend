@@ -1,6 +1,7 @@
 package com.consultancy.education.controller;
 
 import com.consultancy.education.DTOs.requestDTOs.permission.PermissionRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.permission.PermissionHierarchyDto;
 import com.consultancy.education.DTOs.responseDTOs.permission.PermissionResponseDto;
 import com.consultancy.education.exception.AlreadyExistException;
 import com.consultancy.education.exception.NotFoundException;
@@ -222,6 +223,80 @@ public class PermissionController {
             log.error("Error retrieving permissions for role: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), "Error retrieving role permissions", 500));
+        }
+    }
+
+    // ============================================
+    // HIERARCHY ENDPOINTS
+    // ============================================
+
+    /**
+     * Get all unique dashboards
+     */
+    @GetMapping("/hierarchy/dashboards")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    public ResponseEntity<?> getAllDashboards() {
+        try {
+            List<String> dashboards = permissionService.getAllDashboards();
+            return ResponseEntity.ok()
+                    .body(new ApiSuccessResponse<>(dashboards, "Dashboards retrieved successfully", 200));
+        } catch (Exception e) {
+            log.error("Error retrieving dashboards: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), "Error retrieving dashboards", 500));
+        }
+    }
+
+    /**
+     * Get submenus for a specific dashboard
+     */
+    @GetMapping("/hierarchy/dashboards/{dashboard}/submenus")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    public ResponseEntity<?> getSubmenusByDashboard(@PathVariable String dashboard) {
+        try {
+            List<String> submenus = permissionService.getSubmenusByDashboard(dashboard);
+            return ResponseEntity.ok()
+                    .body(new ApiSuccessResponse<>(submenus, "Submenus retrieved successfully", 200));
+        } catch (Exception e) {
+            log.error("Error retrieving submenus: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), "Error retrieving submenus", 500));
+        }
+    }
+
+    /**
+     * Get features for a specific dashboard and submenu
+     */
+    @GetMapping("/hierarchy/dashboards/{dashboard}/features")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    public ResponseEntity<?> getFeaturesByDashboardAndSubmenu(
+            @PathVariable String dashboard,
+            @RequestParam(required = false) String submenu) {
+        try {
+            List<String> features = permissionService.getFeaturesByDashboardAndSubmenu(dashboard, submenu);
+            return ResponseEntity.ok()
+                    .body(new ApiSuccessResponse<>(features, "Features retrieved successfully", 200));
+        } catch (Exception e) {
+            log.error("Error retrieving features: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), "Error retrieving features", 500));
+        }
+    }
+
+    /**
+     * Get complete permission hierarchy tree
+     */
+    @GetMapping("/hierarchy")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    public ResponseEntity<?> getPermissionHierarchy() {
+        try {
+            List<PermissionHierarchyDto> hierarchy = permissionService.getPermissionHierarchy();
+            return ResponseEntity.ok()
+                    .body(new ApiSuccessResponse<>(hierarchy, "Permission hierarchy retrieved successfully", 200));
+        } catch (Exception e) {
+            log.error("Error retrieving permission hierarchy: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), "Error retrieving permission hierarchy", 500));
         }
     }
 }

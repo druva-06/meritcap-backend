@@ -1,26 +1,27 @@
-# Use Maven to build the application
-FROM maven:3.8.4-openjdk-17 as builder
-
-# Set the working directory
+# Stage 1: Build with Maven
+FROM maven:3.8.4-openjdk-17-slim AS builder
 WORKDIR /app
 
-# Copy the pom.xml and source code to the container
+# Cache dependencies (only re-download when pom.xml changes)
 COPY pom.xml .
-COPY src /app/src
+RUN mvn dependency:go-offline -B
 
-# Build the application (package the JAR file)
-RUN mvn clean package -DskipTests
+# Copy source and build
+COPY src ./src
+RUN mvn clean package -DskipTests -B
 
-# Use OpenJDK to run the application
-FROM openjdk:17
-
-# Set the working directory
+# Stage 2: Production runtime
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Copy the JAR file from the builder image
-COPY --from=builder /app/target/*.jar /app/cap.jar
-# Expose the port your Spring Boot application runs on
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
+COPY --from=builder /app/target/*.jar app.jar
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/api/actuator/health || exit 1
+
+USER appuser
 EXPOSE 8080
 
-# Command to run the JAR file
-CMD ["java", "-jar", "/app/cap.jar"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]

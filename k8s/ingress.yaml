@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wowcap-ingress
+  namespace: prod
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+spec:
+  ingressClassName: public
+  tls:
+    - hosts:
+        - wowcap.com
+        - admin.wowcap.com
+        - api.wowcap.com
+      secretName: cloudflare-tls
+  rules:
+    - host: wowcap.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wowcap-user-svc
+                port:
+                  number: 3000
+    - host: admin.wowcap.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wowcap-admin-svc
+                port:
+                  number: 3000
+    - host: api.wowcap.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cap-backend-svc
+                port:
+                  number: 8080

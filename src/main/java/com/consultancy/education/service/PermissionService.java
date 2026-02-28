@@ -2,6 +2,7 @@ package com.consultancy.education.service;
 
 import com.consultancy.education.DTOs.requestDTOs.permission.AssignPermissionsRequestDto;
 import com.consultancy.education.DTOs.requestDTOs.permission.PermissionRequestDto;
+import com.consultancy.education.DTOs.responseDTOs.permission.PermissionHierarchyDto;
 import com.consultancy.education.DTOs.responseDTOs.permission.PermissionResponseDto;
 import com.consultancy.education.DTOs.responseDTOs.user.UserPermissionsResponseDto;
 
@@ -25,6 +26,15 @@ public interface PermissionService {
     List<PermissionResponseDto> getActivePermissions();
 
     List<PermissionResponseDto> getPermissionsByCategory(String category);
+
+    // Hierarchy methods
+    List<String> getAllDashboards();
+
+    List<String> getSubmenusByDashboard(String dashboard);
+
+    List<String> getFeaturesByDashboardAndSubmenu(String dashboard, String submenu);
+
+    List<PermissionHierarchyDto> getPermissionHierarchy();
 
     Set<PermissionResponseDto> getPermissionsByRoleId(Long roleId);
 

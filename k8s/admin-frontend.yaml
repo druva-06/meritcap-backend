@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wowcap-admin
+  namespace: prod
+  labels:
+    app: wowcap-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wowcap-admin
+  template:
+    metadata:
+      labels:
+        app: wowcap-admin
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: wowcap-admin
+          image: ghcr.io/druva-06/wowcap-admin:prod-latest
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wowcap-admin-svc
+  namespace: prod
+spec:
+  selector:
+    app: wowcap-admin
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

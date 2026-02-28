@@ -32,6 +32,15 @@ public class Permission {
     @Column(name = "category", length = 50)
     String category; // e.g., "LEADS", "USERS", "APPLICATIONS", "REPORTS"
 
+    @Column(name = "dashboard", length = 100)
+    String dashboard; // Top-level: "Leads", "Colleges", "Students"
+
+    @Column(name = "submenu", length = 100)
+    String submenu; // Second-level: "All Colleges", "Lead Management" (nullable)
+
+    @Column(name = "feature", length = 100)
+    String feature; // Action: "View", "Create", "Edit", "Delete"
+
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     Boolean isActive = true;

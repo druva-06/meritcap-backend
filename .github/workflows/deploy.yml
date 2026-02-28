@@ -1,46 +1,60 @@
-name: Deploy CAP Backend
+name: Deploy Backend
 
 on:
   push:
-    branches:
-    - release/*
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/cap-backend
 
 jobs:
-  my_job:
-    name: Deploy to server
-    runs-on: ubuntu-22.04
-    
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-    - name: Set up Docker
-      uses: docker/setup-buildx-action@v1
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    - name: Log in to Docker Hub
-      env:
-        DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-        DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-      run: |
-        echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+      - name: Set environment
+        id: env
+        run: |
+          echo "env=prod" >> $GITHUB_OUTPUT
+          echo "vps_host=${{ secrets.PROD_VPS_HOST }}" >> $GITHUB_OUTPUT
+          echo "namespace=prod" >> $GITHUB_OUTPUT
 
-    - name: Build and push Docker Image
-      run: |
-        # Read the current version
-        CURRENT_VERSION=$(cat version.txt)
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-        # Build and push the Docker image with the new version tag
-        docker build -t druva28/cap:$CURRENT_VERSION .
-        docker push druva28/cap:$CURRENT_VERSION
-        docker tag druva28/cap:$CURRENT_VERSION druva28/cap:latest
-        docker push druva28/cap:latest
+      - name: Build & Push Docker image
+        run: |
+          docker build -t $REGISTRY/$IMAGE_NAME:${{ steps.env.outputs.env }}-${{ github.sha }} .
+          docker tag $REGISTRY/$IMAGE_NAME:${{ steps.env.outputs.env }}-${{ github.sha }} \
+                     $REGISTRY/$IMAGE_NAME:${{ steps.env.outputs.env }}-latest
+          docker push $REGISTRY/$IMAGE_NAME:${{ steps.env.outputs.env }}-${{ github.sha }}
+          docker push $REGISTRY/$IMAGE_NAME:${{ steps.env.outputs.env }}-latest
 
-    - name: Deploy to VPS
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        password: ${{ secrets.VPS_PASSWORD }}
-        script: |
-          cd deployments/backend
-          microk8s kubectl rollout restart deployment cap-deployment
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.env.outputs.vps_host }}
+          username: deployer
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            microk8s kubectl set image deployment/cap-backend \
+              cap-backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.env }}-${{ github.sha }} \
+              -n ${{ steps.env.outputs.namespace }}
+            microk8s kubectl rollout status deployment/cap-backend \
+              -n ${{ steps.env.outputs.namespace }} --timeout=120s
