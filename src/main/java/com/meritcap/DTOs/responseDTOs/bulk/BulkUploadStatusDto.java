@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class BulkUploadStatusDto {
     private Long jobId;
+    private String fileName;
     private Integer totalRecords;
     private Integer processedRecords;
     private Integer percentComplete;

@@ -1,4 +1,3 @@
-// File: src/main/java/com/meritcap/service/impl/BulkUploadServiceImpl.java
 package com.meritcap.service.impl;
 
 import com.meritcap.DTOs.requestDTOs.collegeCourse.CollegeCourseRequestExcelDto;
@@ -6,10 +5,10 @@ import com.meritcap.DTOs.requestDTOs.course.CourseRequestDto;
 import com.meritcap.DTOs.responseDTOs.bulk.BulkUploadResponseDto;
 import com.meritcap.DTOs.responseDTOs.bulk.BulkUploadStatusDto;
 import com.meritcap.enums.ActiveStatus;
+import com.meritcap.helper.ExcelHelper;
 import com.meritcap.model.*;
 import com.meritcap.repository.*;
 import com.meritcap.service.BulkUploadService;
-import com.meritcap.helper.ExcelHelper;
 import com.meritcap.utils.NormalizationUtil;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -22,17 +21,29 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.Files;
+import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+/**
+ * Rewritten BulkUploadServiceImpl.
+ *
+ * Key improvements over original:
+ * 1) Parse the Excel file ONCE via ExcelHelper.parseWorkbook(File) — no
+ * triple-parse.
+ * 2) Batch DB operations (colleges, courses, college-courses) instead of
+ * row-by-row.
+ * 3) Rich content fields (credits, aboutCourse, keyFeatures, etc.) applied to
+ * CollegeCourse.
+ * 4) faqsUniversity applied to College entity.
+ * 5) Comprehensive per-row error tracking saved to bulk_upload_errors table.
+ * 6) Progress tracking via BulkUploadJobRepository.
+ */
 @Service
 public class BulkUploadServiceImpl implements BulkUploadService {
 
@@ -48,9 +59,8 @@ public class BulkUploadServiceImpl implements BulkUploadService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    // tunables
-    private final int persistBatchSize = 500;
-    private final int progressUpdateBatchSize = 50;
+    private static final int BATCH_SIZE = 500;
+    private static final int PROGRESS_UPDATE_INTERVAL = 50;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
 
@@ -70,11 +80,16 @@ public class BulkUploadServiceImpl implements BulkUploadService {
         this.entityManager = entityManager;
     }
 
+    // =========================================================================
+    // Public API
+    // =========================================================================
+
     @Override
     public BulkUploadResponseDto startBulkUpload(MultipartFile file, String currentUserId) {
         Objects.requireNonNull(file, "file must not be null");
         String filename = Optional.ofNullable(file.getOriginalFilename()).orElse("upload.xlsx");
 
+        // Create job record
         BulkUploadJob job = BulkUploadJob.builder()
                 .fileName(filename)
                 .createdBy(currentUserId)
@@ -84,26 +99,23 @@ public class BulkUploadServiceImpl implements BulkUploadService {
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
-
         BulkUploadJob saved = jobRepository.save(job);
         Long jobId = saved.getId();
-
         log.info("Bulk upload job created: {} by {} filename={}", jobId, currentUserId, filename);
 
-        // save to temp file to allow multiple InputStreams for Apache POI
+        // Save to temp file
         File tmpFile;
         try {
             tmpFile = saveToTempFile(file, jobId);
         } catch (Exception e) {
-            log.error("Failed to save uploaded file to temp for job {} : {}", jobId, e.getMessage(), e);
-            String msg = truncate(e.getMessage(), 2000);
-            jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.FAILED, msg, LocalDateTime.now());
+            log.error("Failed to save uploaded file to temp for job {}: {}", jobId, e.getMessage(), e);
+            jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.FAILED,
+                    truncate(e.getMessage(), 2000), LocalDateTime.now());
             throw new IllegalStateException("Failed to store uploaded file");
         }
 
-        // asynchronous processing
-        final File processingFile = tmpFile;
-        executor.submit(() -> processFileAsync(jobId, processingFile, currentUserId, filename));
+        // Submit async processing
+        executor.submit(() -> processFileAsync(jobId, tmpFile, currentUserId, filename));
 
         return BulkUploadResponseDto.builder()
                 .jobId(jobId)
@@ -116,586 +128,626 @@ public class BulkUploadServiceImpl implements BulkUploadService {
     public BulkUploadStatusDto getStatus(Long jobId) {
         BulkUploadJob job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new NoSuchElementException("Job not found: " + jobId));
-        int pct = 0;
-        if (job.getTotalRecords() != null && job.getTotalRecords() > 0) {
-            pct = (int) Math.round(100.0 * job.getProcessedRecords() / (double) job.getTotalRecords());
-        }
-        return new BulkUploadStatusDto(job.getId(), job.getTotalRecords(), job.getProcessedRecords(), pct,
-                String.valueOf(job.getStatus()), job.getErrorMessage(), job.getCreatedAt(), job.getUpdatedAt());
+        return toStatusDto(job);
     }
 
-    private void processFileAsync(Long jobId, File tmpFile, String currentUserId, String originalFilename) {
-        long startMs = System.currentTimeMillis();
-        log.info("PROCESS_START jobId={} user={} file={} tmp={}", jobId, currentUserId, originalFilename,
-                tmpFile.getAbsolutePath());
+    @Override
+    public List<BulkUploadStatusDto> listRecentJobs() {
+        return jobRepository.findTop50ByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::toStatusDto)
+                .collect(java.util.stream.Collectors.toList());
+    }
 
-        // mark in progress
+    private BulkUploadStatusDto toStatusDto(BulkUploadJob job) {
+        int pct = 0;
+        if (job.getTotalRecords() != null && job.getTotalRecords() > 0) {
+            pct = (int) Math.round(100.0 * job.getProcessedRecords() / job.getTotalRecords());
+        }
+        return BulkUploadStatusDto.builder()
+                .jobId(job.getId())
+                .fileName(job.getFileName())
+                .totalRecords(job.getTotalRecords())
+                .processedRecords(job.getProcessedRecords())
+                .percentComplete(pct)
+                .status(String.valueOf(job.getStatus()))
+                .errorMessage(job.getErrorMessage())
+                .createdAt(job.getCreatedAt())
+                .updatedAt(job.getUpdatedAt())
+                .build();
+    }
+
+    // =========================================================================
+    // Async processing pipeline
+    // =========================================================================
+
+    private void processFileAsync(Long jobId, File tmpFile, String userId, String originalFilename) {
+        long startMs = System.currentTimeMillis();
+        log.info("PROCESS_START jobId={} user={} file={}", jobId, userId, originalFilename);
+
         jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.IN_PROGRESS, null, LocalDateTime.now());
 
         try {
-            // parse sheets by opening three separate InputStreams from same file:
-            // college-courses, courses, colleges
-            List<CollegeCourseRequestExcelDto> collegeCourseDtos;
-            List<CourseRequestDto> courseDtosFromCourseSheet;
-            List<College> parsedCollegesList;
-            try (InputStream is1 = new FileInputStream(tmpFile);
-                    InputStream is2 = new FileInputStream(tmpFile);
-                    InputStream is3 = new FileInputStream(tmpFile)) {
+            // ── STEP 1: Parse Excel file ONCE ──
+            ExcelHelper.CombinedParseResult parseResult = ExcelHelper.parseWorkbook(tmpFile);
 
-                ExcelHelper.ParseResult<CollegeCourseRequestExcelDto> ccRes = ExcelHelper.parseCollegeCourses(is1);
-                ExcelHelper.ParseResult<CourseRequestDto> cRes = ExcelHelper.parseCourses(is2);
-                ExcelHelper.ParseResult<College> colRes = ExcelHelper.parseColleges(is3);
-
-                collegeCourseDtos = ccRes.getItems();
-                courseDtosFromCourseSheet = cRes.getItems();
-                parsedCollegesList = colRes.getItems();
-
-                // If parse error count equals total rows => treat as fatal (same as existing
-                // logic)
-                if ((collegeCourseDtos == null || collegeCourseDtos.isEmpty())
-                        && (courseDtosFromCourseSheet == null || courseDtosFromCourseSheet.isEmpty())) {
-                    String firstErr = null;
-                    if (ccRes.getRowErrors() != null && !ccRes.getRowErrors().isEmpty())
-                        firstErr = ccRes.getRowErrors().get(0).toString();
-                    else if (cRes.getRowErrors() != null && !cRes.getRowErrors().isEmpty())
-                        firstErr = cRes.getRowErrors().get(0).toString();
-                    String msg = "Parsing resulted in 0 parsed rows. Sample error: "
-                            + (firstErr == null ? "none" : firstErr);
-                    log.error("PARSE_FAILURE jobId={} {}", jobId, msg);
-                    markJobFailedNewTx(jobId, truncate(msg, 2000));
-                    return;
-                }
+            // Persist any parse-level errors
+            for (ExcelHelper.RowError re : parseResult.getRowErrors()) {
+                persistError(originalFilename, re.getRowNumber(), "parse", null,
+                        re.getSnippet(), re.getMessage());
             }
 
-            if (collegeCourseDtos == null)
-                collegeCourseDtos = Collections.emptyList();
-            if (courseDtosFromCourseSheet == null)
-                courseDtosFromCourseSheet = Collections.emptyList();
+            List<College> parsedColleges = parseResult.getColleges();
+            List<CourseRequestDto> parsedCourses = parseResult.getCourses();
+            List<CollegeCourseRequestExcelDto> ccDtos = parseResult.getCollegeCourses();
 
-            // Build parsedColleges map keyed by normalized campus code (only keep parsed
-            // colleges for referenced campus codes later)
-            List<College> parsedColleges = Collections.emptyList();
-            // we created parsedCollegesList in the try-with-resources above; but scope
-            // requires we re-parse or keep reference.
-            // To avoid scope issues, re-open file for parsed colleges if null (safety). But
-            // earlier we populated parsedCollegesList.
-            // For clear code, we will attempt to reuse parsedCollegesList if available.
-            // (Note: parsedCollegesList is effectively set above and visible here.)
-            // If it's null, set to empty list:
-            parsedColleges = (parsedColleges == null) ? Collections.emptyList() : parsedColleges;
-            // However, because parsedCollegesList is local inside try, ensure we had
-            // assigned it to parsedColleges variable above.
-            // To make this robust, we will re-parse colleges if parsedColleges is empty but
-            // that's unnecessary given try block above.
-            // Instead, use reflection of value assigned above:
-            // (Simpler: declare parsedCollegesList outside and assign inside — already done
-            // above.)
-
-            // The code above declared parsedCollegesList; use it:
-            // (But to avoid confusing duplication, let's reference
-            // courseDtosFromCourseSheet and collegeCourseDtos as before.)
-            // To get parsed collegeslist we must have it in scope. Since it was assigned,
-            // use a placeholder:
-            // We will create parsedCollegeMap from calling ExcelHelper.parseColleges again
-            // is unnecessarily expensive.
-            // But we had parsedCollegesList assigned earlier inside try; use it by
-            // re-declaring parsedCollegesList as final. For brevity, assume it's
-            // accessible.
-            // To ensure correctness, replicate parsing again if needed — but keeping
-            // performance in mind, the initial try already parsed it.
-            // For clarity in this file, we'll simply parse colleges again using tmpFile
-            // because tmpFile is small and parsing is cheap relative to DB operations.
-
-            // (Safer approach: parse colleges again here)
-            List<College> parsedCollegeListFinal;
-            try (InputStream isCol = new FileInputStream(tmpFile)) {
-                ExcelHelper.ParseResult<College> colRes = ExcelHelper.parseColleges(isCol);
-                parsedCollegeListFinal = (colRes == null || colRes.getItems() == null) ? Collections.emptyList()
-                        : colRes.getItems();
-            } catch (Exception ex) {
-                parsedCollegeListFinal = Collections.emptyList();
-                log.warn("Failed to re-parse colleges for mapping: {}", ex.getMessage());
-            }
-
-            // Prepare set of campus codes referenced by collegeCourse rows (normalized)
-            Set<String> campusCodes = collegeCourseDtos.stream()
-                    .map(CollegeCourseRequestExcelDto::getCampusCode)
-                    .filter(Objects::nonNull)
-                    .map(NormalizationUtil::normalizeCampusCode)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-
-            // Build parsedCollegeMap only for referenced campusCodes (to limit
-            // inserts/updates)
-            Map<String, College> parsedCollegeMap = parsedCollegeListFinal.stream()
-                    .filter(c -> c.getCampusCode() != null)
-                    .collect(Collectors.toMap(
-                            c -> NormalizationUtil.normalizeCampusCode(c.getCampusCode()),
-                            c -> c,
-                            // if duplicate campus codes in file, prefer the latter row (overwrite)
-                            (existing, replacement) -> replacement,
-                            LinkedHashMap::new));
-            // Keep only parsed entries for campus codes that appear in the collegeCourse
-            // sheet
-            parsedCollegeMap.keySet().retainAll(campusCodes);
-
-            int totalRecords = collegeCourseDtos.size();
+            int totalRecords = ccDtos.size();
             jobRepository.updateTotalRecords(jobId, totalRecords, LocalDateTime.now());
-            log.info("JOB_UPDATED_TOTAL jobId={} totalRecords={}", jobId, totalRecords);
+            log.info("PARSED jobId={} sheet='{}' dataRows={} colleges={} courses={} ccRows={} parseErrors={}",
+                    jobId, parseResult.getSheetName(), parseResult.getTotalDataRows(),
+                    parsedColleges.size(), parsedCourses.size(), ccDtos.size(), parseResult.getRowErrors().size());
 
             if (totalRecords == 0) {
-                jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.COMPLETED, null, LocalDateTime.now());
-                log.info("NO_RECORDS jobId={} finishedImmediately", jobId);
+                String msg = parseResult.getRowErrors().isEmpty() ? null
+                        : "Parsing resulted in 0 valid rows. " + parseResult.getRowErrors().size() + " error(s). " +
+                                "First error: " + parseResult.getRowErrors().get(0).getMessage();
+                jobRepository.updateStatusAndError(jobId,
+                        ccDtos.isEmpty() && !parseResult.getRowErrors().isEmpty()
+                                ? BulkUploadJob.Status.FAILED
+                                : BulkUploadJob.Status.COMPLETED,
+                        truncate(msg, 2000), LocalDateTime.now());
                 cleanupTempFile(tmpFile, jobId);
                 return;
             }
 
-            // --- PRELOAD existing Colleges by campus_code (from referenced campusCodes)
-            Map<String, College> existingColleges = campusCodes.isEmpty()
-                    ? Collections.emptyMap()
-                    : collegeRepository.findByCampusCodeIn(campusCodes).stream()
-                            .collect(Collectors.toMap(College::getCampusCode, c -> c));
+            // ── STEP 2: Upsert Colleges ──
+            Set<String> campusCodes = ccDtos.stream()
+                    .map(CollegeCourseRequestExcelDto::getCampusCode)
+                    .filter(Objects::nonNull)
+                    .map(s -> s.trim().toUpperCase())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
 
-            // --- MERGE parsed college data into existing DB colleges (only where
-            // campusCode matches)
-            List<College> collegesToUpdate = new ArrayList<>();
-            for (Map.Entry<String, College> entry : existingColleges.entrySet()) {
-                String dbCampus = entry.getKey();
-                College dbCollege = entry.getValue();
-                String normDbCampus = NormalizationUtil.normalizeCampusCode(dbCampus);
-                College parsed = parsedCollegeMap.get(normDbCampus);
-                if (parsed != null) {
-                    // Overwrite fields with parsed values, but PROTECT required fields: do NOT set
-                    // name to null/blank
-                    if (parsed.getName() != null && !parsed.getName().isBlank()) {
-                        dbCollege.setName(parsed.getName());
-                    } // else keep existing name (to avoid violating @NotBlank)
-                      // overwrite other fields (allow null to clear)
-                    dbCollege.setCampusName(NormalizationUtil.nullifyIfEmpty(parsed.getCampusName()));
-                    dbCollege.setWebsiteUrl(NormalizationUtil.nullifyIfEmpty(parsed.getWebsiteUrl()));
-                    dbCollege.setCollegeLogo(NormalizationUtil.nullifyIfEmpty(parsed.getCollegeLogo()));
-                    dbCollege.setCountry(NormalizationUtil.nullifyIfEmpty(parsed.getCountry()));
-                    dbCollege.setDescription(NormalizationUtil.nullifyIfEmpty(parsed.getDescription()));
-                    dbCollege.setRanking(NormalizationUtil.nullifyIfEmpty(parsed.getRanking()));
-                    dbCollege.setEstablishedYear(parsed.getEstablishedYear());
-                    dbCollege.setCampusGalleryVideoLink(
-                            NormalizationUtil.nullifyIfEmpty(parsed.getCampusGalleryVideoLink()));
-                    dbCollege.setUpdatedAt(LocalDateTime.now());
-                    // do not overwrite campusCode
-                    // backfill slug only if missing
-                    if (dbCollege.getSlug() == null || dbCollege.getSlug().isBlank()) {
-                        dbCollege.setSlug(NormalizationUtil.genSlug(dbCollege.getName(), dbCollege.getCampusName()));
-                    }
-                    collegesToUpdate.add(dbCollege);
-                } else {
-                    // If no parsed data for this campus, ensure slug backfill if missing (existing
-                    // behavior)
-                    if (dbCollege.getSlug() == null || dbCollege.getSlug().isBlank()) {
-                        dbCollege.setSlug(NormalizationUtil.genSlug(dbCollege.getName(), dbCollege.getCampusName()));
-                        dbCollege.setUpdatedAt(LocalDateTime.now());
-                        collegesToUpdate.add(dbCollege);
-                    }
-                }
-            }
+            Map<String, College> parsedCollegeMap = parsedColleges.stream()
+                    .filter(c -> c.getCampusCode() != null)
+                    .collect(Collectors.toMap(
+                            c -> c.getCampusCode().trim().toUpperCase(),
+                            c -> c,
+                            (a, b) -> b, LinkedHashMap::new));
 
-            if (!collegesToUpdate.isEmpty()) {
-                try {
-                    collegeRepository.saveAll(collegesToUpdate);
-                    log.info("MERGED_EXISTING_COLLEGES jobId={} updatedCount={}", jobId, collegesToUpdate.size());
-                } catch (Exception e) {
-                    log.error("Failed to save updated colleges for job {} : {}", jobId, e.getMessage(), e);
-                    // don't fail the whole job; persist error and continue
-                    persistError(originalFilename, null, "college", null, null,
-                            "Failed to save updated colleges: " + e.getMessage());
-                    try {
-                        entityManager.clear();
-                    } catch (Exception ex) {
-                        log.warn("clear EM failed: {}", ex.getMessage());
-                    }
-                }
-            }
+            Map<String, College> existingColleges = upsertColleges(jobId, originalFilename,
+                    campusCodes, parsedCollegeMap);
 
-            // --- CREATE missing Colleges using parsed data if available, otherwise
-            // fallback minimal
-            List<College> collegesToCreate = new ArrayList<>();
-            for (String campusCode : campusCodes) {
-                if (!existingColleges.containsKey(campusCode)) {
-                    // prefer parsed college if present for this campusCode
-                    College parsed = parsedCollegeMap.get(campusCode);
-                    if (parsed != null) {
-                        College toCreate = College.builder()
-                                .campusCode(NormalizationUtil.normalizeCampusCode(parsed.getCampusCode()))
-                                // name must not be blank; fallback to campusCode
-                                .name((parsed.getName() == null || parsed.getName().isBlank()) ? campusCode
-                                        : parsed.getName())
-                                .campusName(NormalizationUtil.nullifyIfEmpty(parsed.getCampusName()))
-                                .websiteUrl(NormalizationUtil.nullifyIfEmpty(parsed.getWebsiteUrl()))
-                                .collegeLogo(NormalizationUtil.nullifyIfEmpty(parsed.getCollegeLogo()))
-                                .country(NormalizationUtil.nullifyIfEmpty(parsed.getCountry()))
-                                .establishedYear(parsed.getEstablishedYear())
-                                .ranking(NormalizationUtil.nullifyIfEmpty(parsed.getRanking()))
-                                .description(NormalizationUtil.nullifyIfEmpty(parsed.getDescription()))
-                                .campusGalleryVideoLink(
-                                        NormalizationUtil.nullifyIfEmpty(parsed.getCampusGalleryVideoLink()))
-                                .slug((parsed.getName() != null && !parsed.getName().isBlank())
-                                        ? NormalizationUtil.genSlug(parsed.getName(), parsed.getCampusName())
-                                        : NormalizationUtil.genSlug(campusCode, null))
-                                .status(ActiveStatus.ACTIVE)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        collegesToCreate.add(toCreate);
-                    } else {
-                        // fallback minimal college
-                        College c = College.builder()
-                                .campusCode(campusCode)
-                                .name(campusCode)
-                                .slug(NormalizationUtil.genSlug(campusCode, null))
-                                .status(ActiveStatus.ACTIVE)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        collegesToCreate.add(c);
-                    }
-                }
-            }
+            // ── STEP 3: Upsert Courses ──
+            Map<String, Course> existingCourses = upsertCourses(jobId, originalFilename, parsedCourses);
 
-            if (!collegesToCreate.isEmpty()) {
-                // validate & save (attempt to continue for valid ones)
-                List<College> valid = new ArrayList<>();
-                for (College c : collegesToCreate) {
-                    Set<ConstraintViolation<College>> violations = validator.validate(c);
-                    if (!violations.isEmpty()) {
-                        String msgs = violations.stream().map(v -> v.getPropertyPath() + " " + v.getMessage())
-                                .collect(Collectors.joining("; "));
-                        log.warn("College validation failed for campusCode={} : {}", c.getCampusCode(), msgs);
-                        // persist as row-level error (no row number available here)
-                        persistError(originalFilename, null, "college", c.getCampusCode(), null,
-                                "Validation failed during create: " + msgs);
-                        continue;
-                    }
-                    valid.add(c);
-                }
-                if (!valid.isEmpty()) {
-                    try {
-                        collegeRepository.saveAll(valid);
-                    } catch (Exception e) {
-                        log.error("Unexpected error saving colleges for job {}: {}", jobId, e.getMessage(), e);
-                        try {
-                            entityManager.clear();
-                        } catch (Exception ex) {
-                            log.warn("clear EM failed: {}", ex.getMessage());
-                        }
-                        // persist error and continue
-                        persistError(originalFilename, null, "college", null, null,
-                                "Failed saving created colleges: " + e.getMessage());
-                    }
-                    // reload existingColleges map after creations/updates
-                    existingColleges = collegeRepository.findByCampusCodeIn(campusCodes).stream()
-                            .collect(Collectors.toMap(College::getCampusCode, cc -> cc));
-                }
-            }
+            // ── STEP 4: Process CollegeCourse rows in batches ──
+            processCollegeCourseRows(jobId, originalFilename, ccDtos, existingColleges, existingCourses);
 
-            // --- PRELOAD Courses by composite key from courseDtosFromCourseSheet
-            Set<String> courseKeys = courseDtosFromCourseSheet.stream()
-                    .map(c -> makeCourseKey(c.getName(), c.getDepartment(),
-                            NormalizationUtil.normalizeGraduationLevel(c.getGraduationLevel())))
-                    .collect(Collectors.toSet());
-            Map<String, Course> existingCourses = courseKeys.isEmpty()
-                    ? Collections.emptyMap()
-                    : courseRepository.findByCourseKeys(courseKeys).stream().collect(Collectors
-                            .toMap(c -> makeCourseKey(c.getName(), c.getDepartment(), c.getGraduationLevel()), c -> c));
-
-            // --- CREATE missing Courses automatically (as requested)
-            List<Course> coursesToCreate = new ArrayList<>();
-            for (CourseRequestDto cr : courseDtosFromCourseSheet) {
-                String normGrad = NormalizationUtil.normalizeGraduationLevel(cr.getGraduationLevel());
-                String key = makeCourseKey(cr.getName(), cr.getDepartment(), normGrad);
-                if (!existingCourses.containsKey(key)) {
-                    Course newCourse = Course.builder()
-                            .name(cr.getName())
-                            .department(cr.getDepartment())
-                            .graduationLevel(normGrad)
-                            .specialization(cr.getSpecialization())
-                            .createdAt(LocalDateTime.now())
-                            .updatedAt(LocalDateTime.now())
-                            .build();
-                    coursesToCreate.add(newCourse);
-                }
-            }
-            if (!coursesToCreate.isEmpty()) {
-                courseRepository.saveAll(coursesToCreate);
-                // reload existingCourses map
-                Set<String> refreshedKeys = courseKeys;
-                existingCourses = courseRepository.findByCourseKeys(refreshedKeys).stream().collect(Collectors
-                        .toMap(c -> makeCourseKey(c.getName(), c.getDepartment(), c.getGraduationLevel()), c -> c));
-                log.info("CREATED_MISSING_COURSES jobId={} created={}", coursesToCreate.size(), coursesToCreate.size());
-            }
-
-            // --- Process each collegeCourse row and insert/update accordingly
-            int processed = 0;
-            for (int idx = 0; idx < collegeCourseDtos.size(); idx++) {
-                CollegeCourseRequestExcelDto dto = collegeCourseDtos.get(idx);
-                int rowNumber = idx + 1;
-                try {
-                    // normalize campus code
-                    String campusCodeRaw = dto.getCampusCode();
-                    String campusCode = NormalizationUtil.normalizeCampusCode(campusCodeRaw);
-                    if (campusCode == null) {
-                        String msg = "Missing campus code";
-                        log.warn("SKIP_ROW jobId={} row={} reason={}", jobId, rowNumber, msg);
-                        persistError(originalFilename, rowNumber, "parse", null, dtoToRaw(dto), msg);
-                        processed++;
-                        maybeUpdateProgress(jobId, 1);
-                        continue;
-                    }
-
-                    // ensure college exists (created/preloaded)
-                    College college = existingColleges.get(campusCode);
-                    if (college == null) {
-                        // create minimal college on the fly (should be rare because we created for
-                        // referenced campusCodes earlier)
-                        College nc = College.builder()
-                                .campusCode(campusCode)
-                                .name(campusCode)
-                                .slug(NormalizationUtil.genSlug(campusCode, null))
-                                .status(ActiveStatus.ACTIVE)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        try {
-                            collegeRepository.save(nc);
-                            existingColleges.put(nc.getCampusCode(), nc);
-                            college = nc;
-                        } catch (Exception ce) {
-                            String msg = "Failed to create minimal college: " + ce.getMessage();
-                            log.error("CREATE_COLLEGE_FAILED jobId={} row={} campusCode={} error={}", jobId, rowNumber,
-                                    campusCode, ce.getMessage());
-                            persistError(originalFilename, rowNumber, "college", campusCode, dtoToRaw(dto), msg);
-                            processed++;
-                            maybeUpdateProgress(jobId, 1);
-                            continue;
-                        }
-                    }
-
-                    // course lookup: build normalized grad level
-                    String normGradLevel = NormalizationUtil.normalizeGraduationLevel(dto.getGraduationLevel());
-                    String courseKey = makeCourseKey(dto.getCourseName(), dto.getDepartment(), normGradLevel);
-                    Course course = existingCourses.get(courseKey);
-                    if (course == null) {
-                        // create course automatically (as requested)
-                        Course newCourse = Course.builder()
-                                .name(dto.getCourseName())
-                                .department(dto.getDepartment())
-                                .graduationLevel(normGradLevel)
-                                .specialization(null)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        try {
-                            courseRepository.save(newCourse);
-                            // refresh existingCourses map entry
-                            String k = makeCourseKey(newCourse.getName(), newCourse.getDepartment(),
-                                    newCourse.getGraduationLevel());
-                            existingCourses.put(k, newCourse);
-                            course = newCourse;
-                        } catch (Exception ce) {
-                            String msg = "Failed to create course: " + ce.getMessage();
-                            log.error("CREATE_COURSE_FAILED jobId={} row={} key={} error={}", jobId, rowNumber,
-                                    courseKey, ce.getMessage());
-                            persistError(originalFilename, rowNumber, "course", courseKey, dtoToRaw(dto), msg);
-                            processed++;
-                            maybeUpdateProgress(jobId, 1);
-                            continue;
-                        }
-                    }
-
-                    // Now upsert the CollegeCourse (match by college.id & course.id)
-                    Optional<CollegeCourse> maybeExisting = Optional.empty();
-                    try {
-                        if (college.getId() != null && course.getId() != null) {
-                            if (collegeCourseRepository.existsByCollegeIdAndCourseId(college.getId(), course.getId())) {
-                                maybeExisting = collegeCourseRepository.findByCollegeIdAndCourseId(college.getId(),
-                                        course.getId());
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.debug("existence check for college_course failed: {}", e.getMessage());
-                    }
-
-                    if (maybeExisting.isPresent()) {
-                        CollegeCourse ccEntity = maybeExisting.get();
-                        // update (overwrite all fields from DTO) - blanks in DTO will override DB
-                        // fields to null/0 (except where we protect earlier)
-                        applyCollegeCourseDtoToEntityOverwriting(ccEntity, dto);
-                        ccEntity.setUpdatedAt(LocalDateTime.now());
-                        collegeCourseRepository.save(ccEntity);
-                    } else {
-                        CollegeCourse cc = CollegeCourse.builder()
-                                .college(college)
-                                .course(course)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        applyCollegeCourseDtoToEntityOverwriting(cc, dto);
-                        if (cc.getIntakeYear() == null)
-                            cc.setIntakeYear(NormalizationUtil.defaultIntakeYearIfMissing(null));
-                        collegeCourseRepository.save(cc);
-                    }
-
-                } catch (Exception rowEx) {
-                    log.error("ROW_ERROR jobId={} row={} error={}", jobId, rowNumber, rowEx.getMessage(), rowEx);
-                    persistError(originalFilename, rowNumber, "college_course", null, dtoToRaw(dto),
-                            "Row processing failed: " + rowEx.getMessage());
-                } finally {
-                    processed++;
-                    if (processed % progressUpdateBatchSize == 0) {
-                        jobRepository.incrementProcessedRecords(jobId, progressUpdateBatchSize, LocalDateTime.now());
-                        log.debug("PROGRESS_UPDATED jobId={} processed={}/{}", jobId, processed, totalRecords);
-                    }
-                }
-            } // end for rows
-
-            // final progress update
-            jobRepository.incrementProcessedRecords(jobId, processed % progressUpdateBatchSize, LocalDateTime.now());
-            jobRepository.updateTotalRecords(jobId, totalRecords, LocalDateTime.now());
+            // ── DONE ──
             jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.COMPLETED, null, LocalDateTime.now());
-            long endMs = System.currentTimeMillis();
-            log.info("PROCESS_COMPLETE jobId={} totalRecords={} durationMs={}", jobId, totalRecords, (endMs - startMs));
+            long durationMs = System.currentTimeMillis() - startMs;
+            log.info("PROCESS_COMPLETE jobId={} totalRecords={} durationMs={}", jobId, totalRecords, durationMs);
 
         } catch (Exception e) {
             log.error("PROCESS_FAILED jobId={} error={}", jobId, e.getMessage(), e);
-            String truncated = truncate(Optional.ofNullable(e.getMessage()).orElse("Unexpected error"), 2000);
             try {
                 entityManager.clear();
-            } catch (Exception ex) {
-                log.warn("entityManager.clear failed: {}", ex.getMessage());
+            } catch (Exception ignored) {
             }
-            markJobFailedNewTx(jobId, truncated);
+            markJobFailedNewTx(jobId, truncate(
+                    Optional.ofNullable(e.getMessage()).orElse("Unexpected error"), 2000));
         } finally {
             cleanupTempFile(tmpFile, jobId);
         }
     }
 
-    // Helper to apply DTO into entity and overwrite all fields (blank/null
-    // override)
-    private void applyCollegeCourseDtoToEntityOverwriting(CollegeCourse e, CollegeCourseRequestExcelDto dto) {
-        // courseUrl
-        e.setCourseUrl(NormalizationUtil.nullifyIfEmpty(dto.getCourseUrl()));
-        // duration - parse to integer months; if null set to 0 (per earlier agreed
-        // default)
-        Integer dur = NormalizationUtil.parseDurationMonths(dto.getDuration());
-        if (dur == null) {
-            // try parse numeric string
-            try {
-                if (dto.getDuration() != null && !dto.getDuration().isBlank()) {
-                    dur = Integer.parseInt(dto.getDuration().trim());
+    // =========================================================================
+    // Step 2: Upsert Colleges
+    // =========================================================================
+
+    private Map<String, College> upsertColleges(Long jobId, String filename,
+            Set<String> campusCodes,
+            Map<String, College> parsedCollegeMap) {
+        if (campusCodes.isEmpty())
+            return Collections.emptyMap();
+
+        // Load existing colleges by campus code
+        Map<String, College> existing = collegeRepository.findByCampusCodeIn(campusCodes).stream()
+                .collect(Collectors.toMap(College::getCampusCode, c -> c, (a, b) -> a));
+
+        List<College> toUpdate = new ArrayList<>();
+        List<College> toCreate = new ArrayList<>();
+
+        for (String cc : campusCodes) {
+            College parsed = parsedCollegeMap.get(cc);
+            College db = existing.get(cc);
+
+            if (db != null && parsed != null) {
+                // Update existing college with parsed data
+                if (parsed.getName() != null && !parsed.getName().isBlank()) {
+                    db.setName(parsed.getName());
                 }
+                db.setCampusName(NormalizationUtil.nullifyIfEmpty(parsed.getCampusName()));
+                db.setWebsiteUrl(NormalizationUtil.nullifyIfEmpty(parsed.getWebsiteUrl()));
+                db.setCollegeLogo(NormalizationUtil.nullifyIfEmpty(parsed.getCollegeLogo()));
+                db.setCountry(NormalizationUtil.nullifyIfEmpty(parsed.getCountry()));
+                db.setDescription(NormalizationUtil.nullifyIfEmpty(parsed.getDescription()));
+                db.setRanking(NormalizationUtil.nullifyIfEmpty(parsed.getRanking()));
+                db.setEstablishedYear(sanitizeYear(parsed.getEstablishedYear()));
+                db.setCampusGalleryVideoLink(NormalizationUtil.nullifyIfEmpty(parsed.getCampusGalleryVideoLink()));
+                // New field: FAQs University
+                if (parsed.getFaqsUniversity() != null && !parsed.getFaqsUniversity().isBlank()) {
+                    db.setFaqsUniversity(parsed.getFaqsUniversity());
+                }
+                if (db.getSlug() == null || db.getSlug().isBlank()) {
+                    db.setSlug(NormalizationUtil.genSlug(db.getName(), db.getCampusName()));
+                }
+                db.setUpdatedAt(LocalDateTime.now());
+                toUpdate.add(db);
+
+            } else if (db == null) {
+                // Create new college
+                String name = (parsed != null && parsed.getName() != null && !parsed.getName().isBlank())
+                        ? parsed.getName()
+                        : cc;
+                String campus = (parsed != null) ? NormalizationUtil.nullifyIfEmpty(parsed.getCampusName()) : null;
+
+                College.CollegeBuilder builder = College.builder()
+                        .campusCode(cc)
+                        .name(name)
+                        .slug(NormalizationUtil.genSlug(name, campus))
+                        .status(ActiveStatus.ACTIVE)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now());
+
+                if (parsed != null) {
+                    builder.campusName(campus)
+                            .websiteUrl(NormalizationUtil.nullifyIfEmpty(parsed.getWebsiteUrl()))
+                            .collegeLogo(NormalizationUtil.nullifyIfEmpty(parsed.getCollegeLogo()))
+                            .country(NormalizationUtil.nullifyIfEmpty(parsed.getCountry()))
+                            .establishedYear(sanitizeYear(parsed.getEstablishedYear()))
+                            .ranking(NormalizationUtil.nullifyIfEmpty(parsed.getRanking()))
+                            .description(NormalizationUtil.nullifyIfEmpty(parsed.getDescription()))
+                            .campusGalleryVideoLink(
+                                    NormalizationUtil.nullifyIfEmpty(parsed.getCampusGalleryVideoLink()))
+                            .faqsUniversity(NormalizationUtil.nullifyIfEmpty(parsed.getFaqsUniversity()));
+                }
+                College newCollege = builder.build();
+
+                // Validate
+                Set<ConstraintViolation<College>> violations = validator.validate(newCollege);
+                if (!violations.isEmpty()) {
+                    String msgs = violations.stream()
+                            .map(v -> v.getPropertyPath() + " " + v.getMessage())
+                            .collect(Collectors.joining("; "));
+                    log.warn("College validation failed campusCode={}: {}", cc, msgs);
+                    persistError(filename, null, "college", cc, null,
+                            "Validation failed: " + msgs);
+                    continue;
+                }
+                toCreate.add(newCollege);
+            }
+        }
+
+        // Save updates
+        if (!toUpdate.isEmpty()) {
+            try {
+                collegeRepository.saveAll(toUpdate);
+                log.info("UPDATED_COLLEGES jobId={} count={}", jobId, toUpdate.size());
+            } catch (Exception e) {
+                log.error("Failed to update colleges jobId={}: {}", jobId, e.getMessage(), e);
+                persistError(filename, null, "college", null, null,
+                        "Failed to update existing colleges: " + e.getMessage());
+                try {
+                    entityManager.clear();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        // Save creates
+        if (!toCreate.isEmpty()) {
+            try {
+                collegeRepository.saveAll(toCreate);
+                log.info("CREATED_COLLEGES jobId={} count={}", jobId, toCreate.size());
+            } catch (Exception e) {
+                log.error("Failed to create colleges jobId={}: {}", jobId, e.getMessage(), e);
+                persistError(filename, null, "college", null, null,
+                        "Failed to create colleges: " + e.getMessage());
+                try {
+                    entityManager.clear();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        // Reload all colleges for the campus codes
+        return collegeRepository.findByCampusCodeIn(campusCodes).stream()
+                .collect(Collectors.toMap(College::getCampusCode, c -> c, (a, b) -> a));
+    }
+
+    // =========================================================================
+    // Step 3: Upsert Courses
+    // =========================================================================
+
+    private Map<String, Course> upsertCourses(Long jobId, String filename,
+            List<CourseRequestDto> parsedCourses) {
+        // Build keys for all parsed courses
+        Set<String> courseKeys = parsedCourses.stream()
+                .map(c -> makeCourseKey(c.getName(), c.getDepartment(),
+                        NormalizationUtil.normalizeGraduationLevel(c.getGraduationLevel())))
+                .collect(Collectors.toSet());
+
+        // Load existing courses
+        Map<String, Course> existing = courseKeys.isEmpty() ? Collections.emptyMap()
+                : courseRepository.findByCourseKeys(courseKeys).stream()
+                        .collect(Collectors.toMap(
+                                c -> makeCourseKey(c.getName(), c.getDepartment(), c.getGraduationLevel()),
+                                c -> c, (a, b) -> a));
+
+        // Create missing courses (deduplicate by normalized key)
+        List<Course> toCreate = new ArrayList<>();
+        Set<String> pendingKeys = new HashSet<>();
+        for (CourseRequestDto dto : parsedCourses) {
+            String normGrad = NormalizationUtil.normalizeGraduationLevel(dto.getGraduationLevel());
+            String key = makeCourseKey(dto.getName(), dto.getDepartment(), normGrad);
+            if (!existing.containsKey(key) && pendingKeys.add(key)) {
+                Course c = Course.builder()
+                        .name(normalizeField(dto.getName()))
+                        .department(normalizeField(dto.getDepartment()))
+                        .graduationLevel(normGrad)
+                        .specialization(dto.getSpecialization() != null ? dto.getSpecialization().trim() : null)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build();
+                toCreate.add(c);
+            }
+        }
+
+        if (!toCreate.isEmpty()) {
+            final int SUB_BATCH = 500;
+            int totalCreated = 0;
+            for (int start = 0; start < toCreate.size(); start += SUB_BATCH) {
+                int end = Math.min(start + SUB_BATCH, toCreate.size());
+                List<Course> subBatch = toCreate.subList(start, end);
+                try {
+                    courseRepository.saveAll(subBatch);
+                    totalCreated += subBatch.size();
+                    log.info("CREATED_COURSES_BATCH jobId={} batch={}-{} count={}",
+                            jobId, start, end, subBatch.size());
+                } catch (Exception e) {
+                    log.warn("BATCH_CREATE_COURSES_FAILED jobId={} batch={}-{}: {}. Falling back.",
+                            jobId, start, end, e.getMessage());
+                    try {
+                        entityManager.clear();
+                    } catch (Exception ignored) {
+                    }
+                    // Fall back to individual saves for this sub-batch only
+                    for (Course c : subBatch) {
+                        try {
+                            courseRepository.save(c);
+                            totalCreated++;
+                        } catch (Exception ce) {
+                            log.debug("Individual course save failed name='{}': {}", c.getName(), ce.getMessage());
+                            try {
+                                entityManager.clear();
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }
+                }
+            }
+            log.info("CREATED_COURSES_TOTAL jobId={} total={}", jobId, totalCreated);
+
+            // Reload
+            existing = courseRepository.findByCourseKeys(courseKeys).stream()
+                    .collect(Collectors.toMap(
+                            c -> makeCourseKey(c.getName(), c.getDepartment(), c.getGraduationLevel()),
+                            c -> c, (a, b) -> a));
+        }
+
+        return existing;
+    }
+
+    // =========================================================================
+    // Step 4: Process CollegeCourse rows (BATCH optimized)
+    // =========================================================================
+
+    private void processCollegeCourseRows(Long jobId, String filename,
+            List<CollegeCourseRequestExcelDto> ccDtos,
+            Map<String, College> existingColleges,
+            Map<String, Course> existingCourses) {
+
+        // ── Pre-load ALL existing college-course mappings in ONE query ──
+        Set<Long> allCollegeIds = existingColleges.values().stream()
+                .map(College::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // Map: "collegeId|courseId" → existing CollegeCourse entity
+        Map<String, CollegeCourse> existingCcMap = new HashMap<>();
+        if (!allCollegeIds.isEmpty()) {
+            List<CollegeCourse> existingCcList = collegeCourseRepository.findByCollegeIdIn(allCollegeIds);
+            for (CollegeCourse cc : existingCcList) {
+                String ccKey = cc.getCollege().getId() + "|" + cc.getCourse().getId();
+                existingCcMap.put(ccKey, cc);
+            }
+            log.info("PRE_LOADED_CC jobId={} existingCollegeCourses={}", jobId, existingCcMap.size());
+        }
+
+        int processed = 0;
+        List<CollegeCourse> batchToSave = new ArrayList<>(BATCH_SIZE);
+        List<BulkUploadError> errorBatch = new ArrayList<>();
+
+        for (int idx = 0; idx < ccDtos.size(); idx++) {
+            CollegeCourseRequestExcelDto dto = ccDtos.get(idx);
+            int rowNumber = idx + 2; // +2 because idx is 0-based, and row 1 is header
+
+            try {
+                String campusCode = dto.getCampusCode();
+                if (campusCode == null || campusCode.isBlank()) {
+                    errorBatch.add(buildError(filename, rowNumber, "college_course", null,
+                            dtoSnippet(dto), "Row " + rowNumber + ": Missing campus code"));
+                    continue;
+                }
+                campusCode = campusCode.trim().toUpperCase();
+
+                // Resolve college (from pre-loaded map)
+                College college = existingColleges.get(campusCode);
+                if (college == null) {
+                    errorBatch.add(buildError(filename, rowNumber, "college", campusCode,
+                            dtoSnippet(dto),
+                            "Row " + rowNumber + ": College not found for campus code '" + campusCode + "'"));
+                    continue;
+                }
+
+                // Resolve course (from pre-loaded map)
+                String normGrad = NormalizationUtil.normalizeGraduationLevel(dto.getGraduationLevel());
+                if (normGrad == null && dto.getGraduationLevel() != null) {
+                    normGrad = dto.getGraduationLevel().trim().toUpperCase();
+                }
+                String courseKey = makeCourseKey(dto.getCourseName(), dto.getDepartment(), normGrad);
+                Course course = existingCourses.get(courseKey);
+
+                if (course == null) {
+                    // Create course on-the-fly (rare — should be pre-loaded already)
+                    try {
+                        Course nc = Course.builder()
+                                .name(dto.getCourseName())
+                                .department(dto.getDepartment())
+                                .graduationLevel(normGrad)
+                                .createdAt(LocalDateTime.now())
+                                .updatedAt(LocalDateTime.now())
+                                .build();
+                        courseRepository.save(nc);
+                        String newKey = makeCourseKey(nc.getName(), nc.getDepartment(), nc.getGraduationLevel());
+                        existingCourses.put(newKey, nc);
+                        course = nc;
+                    } catch (Exception ce) {
+                        errorBatch.add(buildError(filename, rowNumber, "course", courseKey,
+                                dtoSnippet(dto), "Row " + rowNumber + ": Failed to create course '" + courseKey + "': "
+                                        + ce.getMessage()));
+                        continue;
+                    }
+                }
+
+                // Upsert CollegeCourse — lookup from pre-loaded map (NO DB query)
+                String ccKey = college.getId() + "|" + course.getId();
+                CollegeCourse ccEntity = existingCcMap.get(ccKey);
+
+                if (ccEntity != null) {
+                    // Update existing
+                    applyDtoToEntity(ccEntity, dto);
+                    ccEntity.setUpdatedAt(LocalDateTime.now());
+                    batchToSave.add(ccEntity);
+                } else {
+                    // Create new
+                    ccEntity = CollegeCourse.builder()
+                            .college(college)
+                            .course(course)
+                            .createdAt(LocalDateTime.now())
+                            .updatedAt(LocalDateTime.now())
+                            .build();
+                    applyDtoToEntity(ccEntity, dto);
+                    if (ccEntity.getIntakeYear() == null) {
+                        ccEntity.setIntakeYear(NormalizationUtil.defaultIntakeYearIfMissing(null));
+                    }
+                    batchToSave.add(ccEntity);
+                    // Add to map so subsequent rows for same pair will update instead of duplicate
+                    existingCcMap.put(ccKey, ccEntity);
+                }
+
+            } catch (Exception rowEx) {
+                log.error("ROW_ERROR jobId={} row={}: {}", jobId, rowNumber, rowEx.getMessage(), rowEx);
+                errorBatch.add(buildError(filename, rowNumber, "college_course", null,
+                        dtoSnippet(dto), "Row " + rowNumber + ": " + rowEx.getMessage()));
+            } finally {
+                processed++;
+            }
+
+            // Flush batch when threshold reached
+            if (batchToSave.size() >= BATCH_SIZE) {
+                flushCollegeCourseBatch(jobId, batchToSave, errorBatch, filename);
+                batchToSave.clear();
+                jobRepository.updateProcessedRecords(jobId, processed, LocalDateTime.now());
+                log.info("BATCH_SAVED jobId={} processed={}/{}", jobId, processed, ccDtos.size());
+            }
+
+            // Flush errors periodically
+            if (errorBatch.size() >= 100) {
+                flushErrorBatch(errorBatch);
+            }
+        }
+
+        // Flush remaining
+        if (!batchToSave.isEmpty()) {
+            flushCollegeCourseBatch(jobId, batchToSave, errorBatch, filename);
+            batchToSave.clear();
+        }
+        if (!errorBatch.isEmpty()) {
+            flushErrorBatch(errorBatch);
+        }
+
+        // Final progress update
+        jobRepository.updateProcessedRecords(jobId, processed, LocalDateTime.now());
+        log.info("CC_ROWS_COMPLETE jobId={} processed={}", jobId, processed);
+    }
+
+    /**
+     * Flush a batch of CollegeCourse entities via saveAll().
+     * On failure, falls back to individual saves to isolate bad rows.
+     */
+    private void flushCollegeCourseBatch(Long jobId, List<CollegeCourse> batch,
+            List<BulkUploadError> errorBatch, String filename) {
+        try {
+            collegeCourseRepository.saveAll(batch);
+        } catch (Exception e) {
+            log.warn("BATCH_SAVE_FAILED jobId={} batchSize={} error={}. Falling back to individual saves.",
+                    jobId, batch.size(), e.getMessage());
+            try {
+                entityManager.clear();
+            } catch (Exception ignored) {
+            }
+            // Fall back to individual saves
+            for (CollegeCourse cc : batch) {
+                try {
+                    collegeCourseRepository.save(cc);
+                } catch (Exception ie) {
+                    String identifier = (cc.getCollege() != null ? cc.getCollege().getCampusCode() : "?")
+                            + " | " + (cc.getCourse() != null ? cc.getCourse().getName() : "?");
+                    errorBatch.add(buildError(filename, null, "college_course", identifier,
+                            null, "Failed to save: " + ie.getMessage()));
+                }
+            }
+        }
+    }
+
+    private void flushErrorBatch(List<BulkUploadError> errors) {
+        try {
+            bulkUploadErrorRepository.saveAll(errors);
+        } catch (Exception e) {
+            log.error("Failed to flush error batch: {}", e.getMessage());
+        }
+        errors.clear();
+    }
+
+    // =========================================================================
+    // Apply DTO fields to CollegeCourse entity (including new rich content)
+    // =========================================================================
+
+    private void applyDtoToEntity(CollegeCourse e, CollegeCourseRequestExcelDto dto) {
+        // Course URL
+        e.setCourseUrl(NormalizationUtil.nullifyIfEmpty(dto.getCourseUrl()));
+
+        // Duration → parse to integer months
+        Integer dur = NormalizationUtil.parseDurationMonths(dto.getDuration());
+        if (dur == null && dto.getDuration() != null && !dto.getDuration().isBlank()) {
+            try {
+                dur = Integer.parseInt(dto.getDuration().trim());
             } catch (Exception ignored) {
             }
         }
         e.setDuration(dur == null ? 0 : dur);
 
-        // intake months -> convert to enum list
-        List<com.meritcap.enums.Month> months = new ArrayList<>();
-        List<com.meritcap.enums.Month> parsedMonths = NormalizationUtil
-                .parseIntakeMonthsToEnum(dto.getIntakeMonths())
-                .stream().map(m -> m).collect(Collectors.toList());
-        if (parsedMonths != null && !parsedMonths.isEmpty()) {
-            months.addAll(parsedMonths);
+        // Intake months → enum list (only update if changed to avoid @ElementCollection
+        // DELETE+INSERT)
+        List<com.meritcap.enums.Month> newMonths = NormalizationUtil
+                .parseIntakeMonthsToEnum(dto.getIntakeMonths());
+        if (newMonths == null)
+            newMonths = new ArrayList<>();
+        Set<com.meritcap.enums.Month> existingSet = e.getIntakeMonths() != null
+                ? new HashSet<>(e.getIntakeMonths())
+                : Collections.emptySet();
+        Set<com.meritcap.enums.Month> newSet = new HashSet<>(newMonths);
+        if (!existingSet.equals(newSet)) {
+            e.setIntakeMonths(newMonths);
         }
-        e.setIntakeMonths(months);
 
-        // intake year default to 0 if missing
-        Integer iy = dto.getIntakeYear();
-        e.setIntakeYear(iy == null ? 0 : iy);
+        // Intake year
+        e.setIntakeYear(dto.getIntakeYear() == null ? 0 : dto.getIntakeYear());
 
-        // eligibility and fees (set null if empty)
+        // Text fields
         e.setEligibilityCriteria(NormalizationUtil.nullifyIfEmpty(dto.getEligibilityCriteria()));
         e.setApplicationFee(NormalizationUtil.nullifyIfEmpty(dto.getApplicationFee()));
         e.setTuitionFee(NormalizationUtil.nullifyIfEmpty(dto.getTuitionFee()));
         e.setScholarshipEligible(NormalizationUtil.nullifyIfEmpty(dto.getScholarshipEligible()));
         e.setScholarshipDetails(NormalizationUtil.nullifyIfEmpty(dto.getScholarshipDetails()));
         e.setBacklogAcceptanceRange(NormalizationUtil.nullifyIfEmpty(dto.getBacklogAcceptanceRange()));
+        e.setRemarks(NormalizationUtil.nullifyIfEmpty(dto.getRemarks()));
 
-        // numeric scores
-        e.setIeltsMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getIeltsMinScore() == null ? null : String.valueOf(dto.getIeltsMinScore())));
-        e.setIeltsMinBandScore(NormalizationUtil.parseDoubleOrNull(
-                dto.getIeltsMinBandScore() == null ? null : String.valueOf(dto.getIeltsMinBandScore())));
-        e.setToeflMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getToeflMinScore() == null ? null : String.valueOf(dto.getToeflMinScore())));
-        e.setToeflMinBandScore(NormalizationUtil.parseDoubleOrNull(
-                dto.getToeflMinBandScore() == null ? null : String.valueOf(dto.getToeflMinBandScore())));
-        e.setPteMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getPteMinScore() == null ? null : String.valueOf(dto.getPteMinScore())));
-        e.setPteMinBandScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getPteMinBandScore() == null ? null : String.valueOf(dto.getPteMinBandScore())));
-        e.setDetMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getDetMinScore() == null ? null : String.valueOf(dto.getDetMinScore())));
-        e.setGreMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getGreMinScore() == null ? null : String.valueOf(dto.getGreMinScore())));
-        e.setGmatMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getGmatMinScore() == null ? null : String.valueOf(dto.getGmatMinScore())));
-        e.setSatMinScore(NormalizationUtil
-                .parseDoubleOrNull(dto.getSatMinScore() == null ? null : String.valueOf(dto.getSatMinScore())));
+        // Test scores (Double values)
+        e.setIeltsMinScore(dto.getIeltsMinScore());
+        e.setIeltsMinBandScore(dto.getIeltsMinBandScore());
+        e.setToeflMinScore(dto.getToeflMinScore());
+        e.setToeflMinBandScore(dto.getToeflMinBandScore());
+        e.setPteMinScore(dto.getPteMinScore());
+        e.setPteMinBandScore(dto.getPteMinBandScore());
+        e.setDetMinScore(dto.getDetMinScore());
+        e.setGreMinScore(dto.getGreMinScore());
+        e.setGmatMinScore(dto.getGmatMinScore());
+        e.setSatMinScore(dto.getSatMinScore());
+        e.setCatMinScore(dto.getCatMinScore());
 
+        // Academic scores
         e.setMin10thScore(dto.getMin10thScore());
         e.setMinInterScore(dto.getMinInterScore());
         e.setMinGraduationScore(dto.getMinGraduationScore());
 
-        // append remarks (raw) - overwrite completely
-        e.setRemarks(NormalizationUtil.nullifyIfEmpty(dto.getRemarks()));
+        // ── Rich content fields (new columns AN-AZ) ──
+        e.setCredits(NormalizationUtil.nullifyIfEmpty(dto.getCredits()));
+        e.setDetailedScholarshipInfo(NormalizationUtil.nullifyIfEmpty(dto.getDetailedScholarshipInfo()));
+        e.setWhyChooseThisCourse(NormalizationUtil.nullifyIfEmpty(dto.getWhyChooseThisCourse()));
+        e.setAboutCourse(NormalizationUtil.nullifyIfEmpty(dto.getAboutCourse()));
+        e.setKeyFeatures(NormalizationUtil.nullifyIfEmpty(dto.getKeyFeatures()));
+        e.setLearningOutcomes(NormalizationUtil.nullifyIfEmpty(dto.getLearningOutcomes()));
+        e.setCourseHighlights(NormalizationUtil.nullifyIfEmpty(dto.getCourseHighlights()));
+        e.setCareerOpportunity(NormalizationUtil.nullifyIfEmpty(dto.getCareerOpportunity()));
+        e.setFaqsCourse(NormalizationUtil.nullifyIfEmpty(dto.getFaqsCourse()));
+        e.setCoreModules(NormalizationUtil.nullifyIfEmpty(dto.getCoreModules()));
+        e.setAssessmentMethods(NormalizationUtil.nullifyIfEmpty(dto.getAssessmentMethods()));
+        e.setJobMarkets(NormalizationUtil.nullifyIfEmpty(dto.getJobMarkets()));
     }
 
-    private Map<String, Object> dtoToRaw(CollegeCourseRequestExcelDto dto) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("campusCode", dto.getCampusCode());
-        map.put("courseName", dto.getCourseName());
-        map.put("department", dto.getDepartment());
-        map.put("graduationLevel", dto.getGraduationLevel());
-        map.put("duration", dto.getDuration());
-        map.put("intakeMonths", dto.getIntakeMonths());
-        // add more if needed
-        return map;
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    private BulkUploadError buildError(String fileName, Integer rowNumber, String entityType,
+            String identifier, String rawData, String errorMessage) {
+        return BulkUploadError.builder()
+                .fileName(fileName)
+                .rowNumber(rowNumber)
+                .entityType(entityType)
+                .identifier(identifier)
+                .rawData(rawData)
+                .errorMessage(errorMessage == null ? "" : errorMessage)
+                .build();
     }
 
-    private void persistError(String fileName, Integer rowNumber, String entityType, String identifier, Object rawData,
-            String errorMessage) {
+    private void persistError(String fileName, Integer rowNumber, String entityType,
+            String identifier, String rawData, String errorMessage) {
         try {
-            BulkUploadError e = BulkUploadError.builder()
-                    .fileName(fileName)
-                    .rowNumber(rowNumber)
-                    .entityType(entityType)
-                    .identifier(identifier)
-                    .rawData(rawData == null ? null : rawData.toString())
-                    .errorMessage(errorMessage == null ? "" : errorMessage)
-                    .build();
-            bulkUploadErrorRepository.save(e);
+            bulkUploadErrorRepository.save(buildError(fileName, rowNumber, entityType,
+                    identifier, rawData, errorMessage));
         } catch (Exception ex) {
             log.error("Failed to persist bulk_upload_error: {}", ex.getMessage(), ex);
         }
     }
 
-    private void maybeUpdateProgress(Long jobId, int delta) {
-        jobRepository.incrementProcessedRecords(jobId, delta, LocalDateTime.now());
+    private void maybeUpdateProgress(Long jobId, int processed) {
+        if (processed > 0 && processed % PROGRESS_UPDATE_INTERVAL == 0) {
+            jobRepository.incrementProcessedRecords(jobId, PROGRESS_UPDATE_INTERVAL, LocalDateTime.now());
+        }
     }
 
-    @Transactional
-    protected void batchInsertCollegeCourses(List<CollegeCourse> list) {
-        if (list == null || list.isEmpty())
-            return;
-        int i = 0;
-        for (CollegeCourse cc : list) {
-            entityManager.persist(cc);
-            i++;
-            if (i % persistBatchSize == 0) {
-                entityManager.flush();
-                entityManager.clear();
-            }
-        }
-        entityManager.flush();
-        entityManager.clear();
+    private String dtoSnippet(CollegeCourseRequestExcelDto dto) {
+        if (dto == null)
+            return null;
+        return "campusCode=" + dto.getCampusCode()
+                + ", course=" + dto.getCourseName()
+                + ", dept=" + dto.getDepartment()
+                + ", level=" + dto.getGraduationLevel()
+                + ", duration=" + dto.getDuration();
     }
 
     private File saveToTempFile(MultipartFile file, Long jobId) throws Exception {
@@ -717,9 +769,9 @@ public class BulkUploadServiceImpl implements BulkUploadService {
             return;
         try {
             boolean deleted = f.delete();
-            log.debug("CLEANUP_TMP jobId={} tmpPath={} deleted={}", jobId, f.getAbsolutePath(), deleted);
+            log.debug("CLEANUP_TMP jobId={} deleted={}", jobId, deleted);
         } catch (Exception ex) {
-            log.warn("CLEANUP_TMP_FAILED jobId={} tmpPath={} error={}", jobId, f.getAbsolutePath(), ex.getMessage());
+            log.warn("CLEANUP_TMP_FAILED jobId={}: {}", jobId, ex.getMessage());
         }
     }
 
@@ -728,13 +780,44 @@ public class BulkUploadServiceImpl implements BulkUploadService {
         try {
             jobRepository.updateStatusAndError(jobId, BulkUploadJob.Status.FAILED, truncatedMsg, LocalDateTime.now());
         } catch (Exception e) {
-            log.error("Failed to update job FAILED in new tx for job {} : {}", jobId, e.getMessage(), e);
+            log.error("Failed to update job FAILED for job {}: {}", jobId, e.getMessage(), e);
         }
     }
 
     private String makeCourseKey(String name, String dept, String level) {
-        return (name == null ? "" : name.trim()) + "|" + (dept == null ? "" : dept.trim()) + "|"
-                + (level == null ? "" : level.trim());
+        return normalizeKeyPart(name) + "|" + normalizeKeyPart(dept) + "|" + normalizeKeyPart(level);
+    }
+
+    /**
+     * Normalize a field value for storage: strip invisible chars + trim whitespace
+     */
+    private String normalizeField(String s) {
+        if (s == null)
+            return null;
+        return NormalizationUtil.stripInvisibleChars(s).trim();
+    }
+
+    /**
+     * Normalize a key part for comparison: strip invisible chars + trim + NFC +
+     * lowercase
+     */
+    private String normalizeKeyPart(String s) {
+        if (s == null)
+            return "";
+        String cleaned = NormalizationUtil.stripInvisibleChars(s).toLowerCase();
+        return Normalizer.normalize(cleaned, Normalizer.Form.NFC);
+    }
+
+    /**
+     * Sanitize established year: null out values outside [1800, 2100] range
+     * rather than letting them fail @Min/@Max validation.
+     */
+    private Integer sanitizeYear(Integer year) {
+        if (year == null)
+            return null;
+        if (year < 1800 || year > 2100)
+            return null;
+        return year;
     }
 
     private String truncate(String s, int max) {

@@ -1,4 +1,5 @@
 package com.meritcap.DTOs.requestDTOs.collegeCourse;
+
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -66,4 +67,19 @@ public class CollegeCourseRequestExcelDto {
     String backlogAcceptanceRange;
 
     String remarks;
+
+    // Rich content fields (Excel columns AN-AZ)
+    String credits;
+    String detailedScholarshipInfo;
+    String whyChooseThisCourse;
+    String aboutCourse;
+    String keyFeatures;
+    String learningOutcomes;
+    String courseHighlights;
+    String careerOpportunity;
+    String faqsCourse;
+    String faqsUniversity;
+    String coreModules;
+    String assessmentMethods;
+    String jobMarkets;
 }

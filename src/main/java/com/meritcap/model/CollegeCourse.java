@@ -4,6 +4,7 @@ import com.meritcap.enums.Month;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.BatchSize;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class CollegeCourse {
     @CollectionTable(name = "course_intake_months", joinColumns = @JoinColumn(name = "college_course_id"))
     @Enumerated(EnumType.STRING)
     @Column(name = "intake_months", nullable = false)
+    @BatchSize(size = 500)
     List<Month> intakeMonths;
 
     @Column(name = "intake_year", nullable = false)
@@ -96,6 +98,44 @@ public class CollegeCourse {
 
     @Column(name = "remarks", columnDefinition = "TEXT")
     String remarks;
+
+    // ---- Rich content fields (from Excel columns AN-AZ) ----
+
+    @Column(name = "credits", columnDefinition = "TEXT")
+    String credits;
+
+    @Column(name = "detailed_scholarship_info", columnDefinition = "TEXT")
+    String detailedScholarshipInfo;
+
+    @Column(name = "why_choose_this_course", columnDefinition = "TEXT")
+    String whyChooseThisCourse;
+
+    @Column(name = "about_course", columnDefinition = "TEXT")
+    String aboutCourse;
+
+    @Column(name = "key_features", columnDefinition = "TEXT")
+    String keyFeatures;
+
+    @Column(name = "learning_outcomes", columnDefinition = "TEXT")
+    String learningOutcomes;
+
+    @Column(name = "course_highlights", columnDefinition = "TEXT")
+    String courseHighlights;
+
+    @Column(name = "career_opportunity", columnDefinition = "TEXT")
+    String careerOpportunity;
+
+    @Column(name = "faqs_course", columnDefinition = "TEXT")
+    String faqsCourse;
+
+    @Column(name = "core_modules", columnDefinition = "TEXT")
+    String coreModules;
+
+    @Column(name = "assessment_methods", columnDefinition = "TEXT")
+    String assessmentMethods;
+
+    @Column(name = "job_markets", columnDefinition = "TEXT")
+    String jobMarkets;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     LocalDateTime createdAt;

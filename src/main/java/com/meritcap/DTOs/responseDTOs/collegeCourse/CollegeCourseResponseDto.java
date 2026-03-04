@@ -105,4 +105,41 @@ public class CollegeCourseResponseDto {
 
     @Schema(description = "Minimum CAT score")
     Double catMinScore;
+
+    // Rich content fields
+    @Schema(description = "Credits information")
+    String credits;
+
+    @Schema(description = "Detailed scholarship information")
+    String detailedScholarshipInfo;
+
+    @Schema(description = "Reasons to choose this course")
+    String whyChooseThisCourse;
+
+    @Schema(description = "About the course")
+    String aboutCourse;
+
+    @Schema(description = "Key features of the course")
+    String keyFeatures;
+
+    @Schema(description = "Learning outcomes")
+    String learningOutcomes;
+
+    @Schema(description = "Course highlights")
+    String courseHighlights;
+
+    @Schema(description = "Career opportunities")
+    String careerOpportunity;
+
+    @Schema(description = "Course FAQs")
+    String faqsCourse;
+
+    @Schema(description = "Core modules")
+    String coreModules;
+
+    @Schema(description = "Assessment and learning methods")
+    String assessmentMethods;
+
+    @Schema(description = "Job markets")
+    String jobMarkets;
 }

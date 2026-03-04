@@ -46,6 +46,7 @@ run_sql() {
 run_sql "${SCRIPT_DIR}/001_seed_roles.sql"
 run_sql "${SCRIPT_DIR}/002_seed_permissions.sql"
 run_sql "${SCRIPT_DIR}/003_seed_role_permissions.sql"
+run_sql "${SCRIPT_DIR}/004_seed_admin_user.sql"
 
 echo "=============================================="
 echo "  ✓ Database seed complete!"

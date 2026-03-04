@@ -31,7 +31,7 @@ public class CollegeTransformer {
                 c.getId(), c.getSlug(), c.getName(), c.getCampusName(), c.getCampusCode(),
                 c.getCountry(), c.getEstablishedYear(), c.getRanking(), c.getDescription(),
                 c.getWebsiteUrl(), c.getCollegeLogo(), c.getCampusGalleryVideoLink(), c.getBannerUrl(),
-                c.getStatus(), c.getCreatedAt(), c.getUpdatedAt(), c.getCreatedBy(), c.getUpdatedBy()
-        );
+                c.getStatus(), c.getCreatedAt(), c.getUpdatedAt(), c.getCreatedBy(), c.getUpdatedBy(),
+                c.getFaqsUniversity());
     }
 }

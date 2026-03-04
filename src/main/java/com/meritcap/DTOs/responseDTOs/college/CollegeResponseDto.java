@@ -27,4 +27,5 @@ public class CollegeResponseDto {
     private LocalDateTime updatedAt;
     private String createdBy;
     private String updatedBy;
+    private String faqsUniversity;
 }
