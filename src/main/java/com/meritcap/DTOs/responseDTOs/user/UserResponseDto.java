@@ -32,4 +32,6 @@ public class UserResponseDto {
     String profilePicture;
     @Schema(description = "User Role")
     String role;
+    @Schema(description = "Indicates if user profile is incomplete and needs additional information")
+    Boolean profileIncomplete;
 }

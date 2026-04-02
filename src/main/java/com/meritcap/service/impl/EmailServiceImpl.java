@@ -245,4 +245,67 @@ public class EmailServiceImpl implements EmailService {
                         """,
                 appName, firstName, appName);
     }
+
+    @Override
+    public EmailService.EmailDetails sendOTPEmail(String email, String otp) {
+        String subject = String.format("Your %s Login Code", appName);
+        String htmlContent = buildOTPEmailTemplate(otp);
+
+        try {
+            if (sendActualEmails) {
+                sendHtmlEmail(email, subject, htmlContent);
+                logger.info("OTP email sent successfully to: {}", email);
+                return new EmailService.EmailDetails(email, subject, htmlContent, null, true);
+            } else {
+                logger.info("📧 [DEV MODE] OTP email captured (not sent) to: {}", email);
+                logger.info("🔑 OTP Code: {}", otp);
+                return new EmailService.EmailDetails(email, subject, htmlContent, null, false);
+            }
+        } catch (Exception e) {
+            logger.error("Failed to send OTP email to: {}", email, e);
+            throw new RuntimeException("Failed to send OTP email", e);
+        }
+    }
+
+    private String buildOTPEmailTemplate(String otp) {
+        return String.format(
+                """
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <style>
+                                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                                .header { background-color: #4F46E5; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                                .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }
+                                .otp-box { background-color: #EEF2FF; border: 2px solid #4F46E5; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 30px 0; border-radius: 8px; color: #4F46E5; }
+                                .footer { background-color: #f3f4f6; padding: 20px; text-align: center; font-size: 12px; color: #6b7280; border-radius: 0 0 8px 8px; }
+                                .warning { background-color: #FEF3C7; padding: 15px; border-left: 4px solid #F59E0B; margin: 20px 0; font-size: 14px; }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header">
+                                    <h1>🔐 Your Login Code</h1>
+                                </div>
+                                <div class="content">
+                                    <p>Hello,</p>
+                                    <p>You requested a login code for your %s account. Use the code below to complete your login:</p>
+                                    <div class="otp-box">%s</div>
+                                    <div class="warning">
+                                        <strong>⏰ Valid for 10 minutes</strong><br>
+                                        This code will expire in 10 minutes. If you didn't request this code, please ignore this email.
+                                    </div>
+                                    <p style="font-size: 14px; color: #6b7280;">For your security, never share this code with anyone.</p>
+                                </div>
+                                <div class="footer">
+                                    <p>This is an automated email from %s. Please do not reply to this email.</p>
+                                    <p>&copy; 2026 %s. All rights reserved.</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                        """,
+                appName, otp, appName, appName);
+    }
 }

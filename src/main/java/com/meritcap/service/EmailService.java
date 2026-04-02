@@ -74,4 +74,13 @@ public interface EmailService {
      * @return EmailDetails containing email content
      */
     EmailDetails sendWelcomeEmail(String email, String firstName);
+
+    /**
+     * Send OTP email for quick login
+     * 
+     * @param email Recipient email address
+     * @param otp   6-digit OTP code
+     * @return EmailDetails containing email content
+     */
+    EmailDetails sendOTPEmail(String email, String otp);
 }

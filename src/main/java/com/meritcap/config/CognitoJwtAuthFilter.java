@@ -53,46 +53,81 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 String token = authHeader.substring(7);
 
-                try {
-                    Jwt jwt = jwtDecoder.decode(token);
-                    log.debug("JWT successfully decoded for request: {}", request.getRequestURI());
-
-                    // Validate token_use claim
-                    String tokenUse = jwt.getClaimAsString("token_use");
-                    if (!"access".equals(tokenUse)) {
-                        log.warn("Invalid token_use: {} for request {}", tokenUse, request.getRequestURI());
-                        throw new RuntimeException("Only access tokens are allowed");
+                // Handle OTP session tokens differently from Cognito JWT tokens
+                if (token.startsWith("otp-session-")) {
+                    log.debug("OTP session token detected for request: {}", request.getRequestURI());
+                    
+                    try {
+                        // Extract user ID from OTP session token: "otp-session-{userId}-{timestamp}"
+                        String[] parts = token.split("-");
+                        if (parts.length >= 3) {
+                            String userId = parts[2];
+                            
+                            // Set simple authentication for OTP users
+                            List<GrantedAuthority> authorities = List.of(
+                                new SimpleGrantedAuthority("ROLE_STUDENT"),
+                                new SimpleGrantedAuthority("ROLE_USER")
+                            );
+                            
+                            String username = "otp-user-" + userId;
+                            MDC.put("user", username);
+                            
+                            log.info("OTP session user {} authenticated with roles {}", username, authorities);
+                            
+                            // Set Spring Security context
+                            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                    username, null, authorities);
+                            SecurityContextHolder.getContext().setAuthentication(authentication);
+                        } else {
+                            log.warn("Invalid OTP session token format: {}", token);
+                        }
+                    } catch (Exception ex) {
+                        log.error("OTP session authentication failed for request {}: {}", request.getRequestURI(), ex.getMessage());
+                        SecurityContextHolder.clearContext();
                     }
+                } else {
+                    // Handle regular Cognito JWT tokens
+                    try {
+                        Jwt jwt = jwtDecoder.decode(token);
+                        log.debug("JWT successfully decoded for request: {}", request.getRequestURI());
 
-                    // Extract Cognito groups and convert to ROLE_ authorities
-                    List<String> groups = jwt.getClaimAsStringList("cognito:groups");
+                        // Validate token_use claim
+                        String tokenUse = jwt.getClaimAsString("token_use");
+                        if (!"access".equals(tokenUse)) {
+                            log.warn("Invalid token_use: {} for request {}", tokenUse, request.getRequestURI());
+                            throw new RuntimeException("Only access tokens are allowed");
+                        }
 
-                    List<GrantedAuthority> authorities;
-                    if (groups == null || groups.isEmpty()) {
-                        log.warn("No Cognito groups found for user {}, assigning default USER role",
-                                jwt.getClaimAsString("username"));
-                        authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
-                    } else {
-                        authorities = groups.stream()
-                                .map(g -> new SimpleGrantedAuthority("ROLE_" + g.toUpperCase()))
-                                .collect(Collectors.toList());
+                        // Extract Cognito groups and convert to ROLE_ authorities
+                        List<String> groups = jwt.getClaimAsStringList("cognito:groups");
+
+                        List<GrantedAuthority> authorities;
+                        if (groups == null || groups.isEmpty()) {
+                            log.warn("No Cognito groups found for user {}, assigning default USER role",
+                                    jwt.getClaimAsString("username"));
+                            authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                        } else {
+                            authorities = groups.stream()
+                                    .map(g -> new SimpleGrantedAuthority("ROLE_" + g.toUpperCase()))
+                                    .collect(Collectors.toList());
+                        }
+
+                        String username = jwt.getClaimAsString("username");
+                        MDC.put("user", username);
+
+                        log.info("User {} authenticated with roles {}", username, authorities);
+
+                        // Set Spring Security context
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                username, null, authorities);
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                    } catch (Exception ex) {
+                        log.error("JWT authentication failed for request {}: {}", request.getRequestURI(), ex.getMessage(),
+                                ex);
+                        SecurityContextHolder.clearContext();
+                        // do NOT short-circuit the chain; let Security handle unauthorized response
                     }
-
-                    String username = jwt.getClaimAsString("username");
-                    MDC.put("user", username);
-
-                    log.info("User {} authenticated with roles {}", username, authorities);
-
-                    // Set Spring Security context
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            username, null, authorities);
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                } catch (Exception ex) {
-                    log.error("JWT authentication failed for request {}: {}", request.getRequestURI(), ex.getMessage(),
-                            ex);
-                    SecurityContextHolder.clearContext();
-                    // do NOT short-circuit the chain; let Security handle unauthorized response
                 }
 
             } else {

@@ -43,6 +43,10 @@ public class User {
     @Builder.Default
     private Boolean accountLocked = false;
 
+    @Column(name = "profile_incomplete")
+    @Builder.Default
+    private Boolean profileIncomplete = false;
+
     @Column(name = "profile_picture")
     String profilePicture;
 

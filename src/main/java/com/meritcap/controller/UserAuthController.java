@@ -1,9 +1,12 @@
 package com.meritcap.controller;
 
 import com.meritcap.DTOs.requestDTOs.userAuth.ChangePasswordRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.SendEmailOTPRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthLoginRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthRefreshRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.VerifyEmailOTPRequestDto;
+import com.meritcap.DTOs.responseDTOs.userAuth.SendEmailOTPResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthRefreshResponseDto;
 import com.meritcap.exception.CustomException;
@@ -210,6 +213,50 @@ public class UserAuthController {
             return ResponseEntity.status(HttpStatus.OK).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
         } catch (Exception e) {
             log.error("Refresh token internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PostMapping("/email-otp/send")
+    public ResponseEntity<?> sendEmailOTP(@RequestBody @Valid SendEmailOTPRequestDto request, BindingResult bindingResult) {
+        log.info("Send OTP request received for email: {}", request.getEmail());
+        if (bindingResult.hasErrors()) {
+            log.error("Send OTP validation errors occurred");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
+        }
+
+        try {
+            SendEmailOTPResponseDto response = userAuthService.sendEmailOTP(request);
+            log.info("OTP sent successfully to: {}", request.getEmail());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "OTP sent successfully!", 200));
+        } catch (CustomException e) {
+            log.error("Send OTP error occurred: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Send OTP internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PostMapping("/email-otp/verify")
+    public ResponseEntity<?> verifyEmailOTP(@RequestBody @Valid VerifyEmailOTPRequestDto request, BindingResult bindingResult) {
+        log.info("Verify OTP request received for email: {}", request.getEmail());
+        if (bindingResult.hasErrors()) {
+            log.error("Verify OTP validation errors occurred");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
+        }
+
+        try {
+            UserAuthLoginResponseDto response = userAuthService.verifyEmailOTP(request);
+            log.info("OTP verified successfully for: {}", request.getEmail());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "Login successful!", 200));
+        } catch (CustomException e) {
+            log.error("Verify OTP error occurred: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Verify OTP internal error: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
     }

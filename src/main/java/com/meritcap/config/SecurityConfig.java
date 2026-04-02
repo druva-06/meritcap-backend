@@ -42,6 +42,7 @@ public class SecurityConfig {
             "/auth/signup/invited",
             "/invitation/validate",
             "/auth/login",
+            "/auth/email-otp/**",
             "/auth/forgotPassword/**",
             "/auth/resendVerificationCode/**",
             "/auth/confirmVerificationCode",

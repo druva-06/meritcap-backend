@@ -15,6 +15,7 @@ public class UserTransformer {
         userResponseDto.setUsername(user.getUsername());
         userResponseDto.setRole(user.getRole() != null ? user.getRole().getName() : null);
         userResponseDto.setProfilePicture(user.getProfilePicture());
+        userResponseDto.setProfileIncomplete(user.getProfileIncomplete());
         userAuthLoginResponseDto.setUser(userResponseDto);
     }
 
@@ -28,6 +29,7 @@ public class UserTransformer {
                 .phoneNumber(user.getPhoneNumber())
                 .profilePicture(user.getProfilePicture())
                 .role(user.getRole() != null ? user.getRole().getName() : null)
+                .profileIncomplete(user.getProfileIncomplete())
                 .build();
     }
 
