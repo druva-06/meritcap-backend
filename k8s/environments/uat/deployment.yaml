@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meritcap-backend
+  namespace: uat
+  labels:
+    app: meritcap-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meritcap-backend
+  template:
+    metadata:
+      labels:
+        app: meritcap-backend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: meritcap-backend
+          image: ghcr.io/druva-06/meritcap-backend:uat-latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+          envFrom:
+            - secretRef:
+                name: meritcap-backend-secrets
+          resources:
+            requests:
+              memory: "640Mi"
+              cpu: "250m"
+            limits:
+              memory: "1500Mi"
+              cpu: "900m"
+          livenessProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10

@@ -46,13 +46,26 @@ cap-backend/
 git clone git@github.com:druva-06/cap-backend.git && cd cap-backend
 
 # 2. Set up credentials
-cp .env.example .env   # fill in values
+cp .env.example .env   # fill in values for local dev profile
 
 # 3. Start SSH tunnel to VPS MySQL
 ./start-db-tunnel.sh
 
 # 4. Run
 mvn spring-boot:run    # → http://localhost:8080/api/swagger-ui/index.html
+```
+
+### Run Locally with Production Profile
+
+```bash
+# 1. Create prod-local env file from template
+cp .env.prod.local.example .env.prod.local
+
+# 2. Load env vars
+source .env.prod.local
+
+# 3. Run with prod profile
+./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
 See [docs/DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md) for full setup instructions.
@@ -97,9 +110,11 @@ See [database/README.md](database/README.md) for details.
 
 ## Deployment
 
-Production runs on a VPS (82.112.234.51) with MicroK8s. Pushes to `main` auto-deploy via GitHub Actions.
+Production runs on a VPS (82.112.234.51) with MicroK8s. Branch-based multi-environment deploy is configured via GitHub Actions.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full deployment guide.
+See [docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md) for environment mapping and secrets setup.
+See [k8s/environments/README.md](k8s/environments/README.md) for isolated Kubernetes manifests per environment.
 
 ## Documentation
 

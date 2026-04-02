@@ -1,9 +1,12 @@
 package com.meritcap.config;
 
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -15,6 +18,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -26,14 +30,11 @@ import java.util.List;
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
-    @Value("${aws.cognito.userPoolId}")
-    private String userPoolId;
 
-    @Value("${aws.region}")
-    private String region;
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-    @Value("${cors.allowed-origins}")
-    private String allowedOriginsStr;
+    @Autowired
+    private Environment environment;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/auth/signup",
@@ -53,6 +54,8 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        CognitoJwtAuthFilter jwtFilter = buildCognitoJwtAuthFilterIfConfigured();
+
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults()) // <-- enable Spring Security to use CorsConfigurationSource bean
@@ -65,8 +68,11 @@ public class SecurityConfig {
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(customAuthenticationEntryPoint()) // 401 handler
                         .accessDeniedHandler(customAccessDeniedHandler()) // 403 handler
-                )
-                .addFilterBefore(cognitoJwtAuthFilter(), UsernamePasswordAuthenticationFilter.class);
+                );
+
+        if (jwtFilter != null) {
+            http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+        }
 
         return http.build();
     }
@@ -95,9 +101,27 @@ public class SecurityConfig {
         };
     }
 
-    @Bean
-    public CognitoJwtAuthFilter cognitoJwtAuthFilter() {
-        return new CognitoJwtAuthFilter(userPoolId, region);
+    private CognitoJwtAuthFilter buildCognitoJwtAuthFilterIfConfigured() {
+        String userPoolId = firstPresent("aws.cognito.userPoolId", "COGNITO_USER_POOL_ID");
+        String region = firstPresent("aws.region", "AWS_REGION");
+
+        if (StringUtils.hasText(userPoolId) && StringUtils.hasText(region)) {
+            return new CognitoJwtAuthFilter(userPoolId, region);
+        }
+
+        if (isDevProfile()) {
+            log.warn(
+                    "Cognito config missing (aws.cognito.userPoolId/aws.region). JWT auth filter disabled for dev startup.");
+            return null;
+        }
+
+        throw new IllegalStateException(
+                "Missing Cognito configuration. Set aws.cognito.userPoolId (or COGNITO_USER_POOL_ID) and aws.region (or AWS_REGION).");
+    }
+
+    private boolean isDevProfile() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .anyMatch("dev"::equalsIgnoreCase);
     }
 
     /**
@@ -107,6 +131,11 @@ public class SecurityConfig {
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        String allowedOriginsStr = firstPresent("cors.allowed-origins", "CORS_ALLOWED_ORIGINS");
+        if (!StringUtils.hasText(allowedOriginsStr)) {
+            allowedOriginsStr = "http://localhost:3000";
+        }
+
         CorsConfiguration configuration = new CorsConfiguration();
         // DEV: set to your dev origin. If you need cookies/auth, use explicit origin
         // and allowCredentials(true).
@@ -129,5 +158,23 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private String firstPresent(String... keys) {
+        for (String key : keys) {
+            String value = safeGetProperty(key);
+            if (StringUtils.hasText(value) && !value.contains("${")) {
+                return value.trim();
+            }
+        }
+        return "";
+    }
+
+    private String safeGetProperty(String key) {
+        try {
+            return environment.getProperty(key);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

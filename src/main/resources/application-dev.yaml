@@ -36,16 +36,16 @@ spring:
 
 aws:
   cognito:
-    userPoolId: ${COGNITO_USER_POOL_ID}
-    clientId: ${COGNITO_CLIENT_ID}
-    clientSecret: ${COGNITO_CLIENT_SECRET}
+    userPoolId: ${COGNITO_USER_POOL_ID:dummy-dev-user-pool-id}
+    clientId: ${COGNITO_CLIENT_ID:dummy-dev-client-id}
+    clientSecret: ${COGNITO_CLIENT_SECRET:dummy-dev-client-secret}
     region: ${AWS_REGION:ap-south-2}
-    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
-    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
+    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID:dummyDevAccessKey}
+    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY:dummyDevSecretKey}
   s3:
-    bucketName: ${S3_BUCKET_NAME}
-    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
-    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
+    bucketName: ${S3_BUCKET_NAME:dummy-dev-bucket}
+    accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID:dummyDevAccessKey}
+    secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY:dummyDevSecretKey}
   region: ${AWS_REGION:ap-south-2}
 
 app:

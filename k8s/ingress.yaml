@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: meritcap-ingress
   namespace: prod
+  # Shared frontend ingress only. Backend API ingress is managed in
+  # k8s/environments/prod/ingress.yaml to avoid duplicate host/path rules.
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
@@ -14,7 +16,6 @@ spec:
     - hosts:
         - meritcap.com
         - admin.meritcap.com
-        - api.meritcap.com
       secretName: cloudflare-tls
   rules:
     - host: meritcap.com
@@ -37,13 +38,3 @@ spec:
                 name: meritcap-admin-svc
                 port:
                   number: 3000
-    - host: api.meritcap.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: meritcap-backend-svc
-                port:
-                  number: 8080
