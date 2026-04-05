@@ -3,13 +3,16 @@ package com.meritcap.service.impl;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.meritcap.DTOs.requestDTOs.userAuth.ChangePasswordRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.GoogleAuthCallbackRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.SendEmailOTPRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.UpdateUsernameRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthLoginRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthRefreshRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.VerifyEmailOTPRequestDto;
 import com.meritcap.DTOs.responseDTOs.permission.PermissionResponseDto;
 import com.meritcap.DTOs.responseDTOs.user.UserPermissionsResponseDto;
+import com.meritcap.DTOs.responseDTOs.userAuth.GoogleAuthUrlResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.SendEmailOTPResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthRefreshResponseDto;
@@ -29,11 +32,17 @@ import com.meritcap.transformer.UserTransformer;
 import com.meritcap.utils.CognitoUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.*;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -58,6 +67,15 @@ public class UserAuthServiceImpl implements UserAuthService {
     @Value("${aws.cognito.clientSecret}")
     private String clientSecret;
 
+    @Value("${aws.cognito.domain:}")
+    private String cognitoDomain;
+
+    @Value("${aws.cognito.google.redirectUri:}")
+    private String googleRedirectUri;
+
+    @Value("${aws.cognito.region:ap-south-2}")
+    private String cognitoRegion;
+
     UserAuthServiceImpl(UserRepository userRepository, RoleRepository roleRepository,
             EmailOTPRepository emailOTPRepository, EmailService emailService,
             CognitoIdentityProviderClient cognitoClient, PermissionService permissionService) {
@@ -79,9 +97,20 @@ public class UserAuthServiceImpl implements UserAuthService {
             throw new CustomException("Email Already Exists");
         }
 
-        if (userRepository.findByPhoneNumber(userAuthSignUpRequestDto.getPhoneNumber()) != null) {
-            log.error("Phone Already Exists: {}", userAuthSignUpRequestDto.getPhoneNumber());
-            throw new CustomException("Phone Number Already Exists");
+        // Determine if phone is provided or needs placeholder
+        String phoneNumber = userAuthSignUpRequestDto.getPhoneNumber();
+        boolean hasRealPhone = phoneNumber != null && !phoneNumber.trim().isEmpty();
+        
+        if (hasRealPhone) {
+            // Only check for duplicates if a real phone number is provided
+            if (userRepository.findByPhoneNumber(phoneNumber) != null) {
+                log.error("Phone Already Exists: {}", phoneNumber);
+                throw new CustomException("Phone Number Already Exists");
+            }
+        } else {
+            // Generate placeholder phone number (same pattern as OAuth signup)
+            phoneNumber = "+1000000000" + (new java.util.Random().nextInt(9000) + 1000);
+            log.info("Generated placeholder phone for user: {}", userAuthSignUpRequestDto.getEmail());
         }
 
         if (userRepository.findByUsername(userAuthSignUpRequestDto.getUsername()) != null) {
@@ -98,7 +127,7 @@ public class UserAuthServiceImpl implements UserAuthService {
         attributes.put("email",
                 AttributeType.builder().name("email").value(userAuthSignUpRequestDto.getEmail()).build());
         attributes.put("phone_number",
-                AttributeType.builder().name("phone_number").value(userAuthSignUpRequestDto.getPhoneNumber()).build());
+                AttributeType.builder().name("phone_number").value(phoneNumber).build());
         attributes.put("name",
                 AttributeType.builder().name("name").value(userAuthSignUpRequestDto.getFirstName()).build());
         attributes.put("preferred_username", AttributeType.builder().name("preferred_username")
@@ -139,6 +168,15 @@ public class UserAuthServiceImpl implements UserAuthService {
 
             // Step 3: Save user in local database (within @Transactional)
             User user = UserAuthTransformer.toUserEntity(userAuthSignUpRequestDto, role);
+            
+            // Override phone number with resolved value (may be placeholder)
+            user.setPhoneNumber(phoneNumber);
+            
+            // Set profileIncomplete if user signed up without real phone
+            if (!hasRealPhone) {
+                user.setProfileIncomplete(true);
+                log.info("User {} marked as profileIncomplete (no phone provided)", email);
+            }
 
             if ("STUDENT".equalsIgnoreCase(userAuthSignUpRequestDto.getRole())) {
                 Student student = new Student();
@@ -679,54 +717,136 @@ public class UserAuthServiceImpl implements UserAuthService {
 
     private UserAuthLoginResponseDto generateTokensForExistingUser(User user) {
         try {
-            // For OTP quick login, create login response with simple tokens
-            // In a production environment, you would integrate with Cognito's custom auth flow
-            // or use admin APIs to generate proper tokens
+            log.info("Generating Cognito tokens for existing OTP user: {}", user.getEmail());
             
-            log.info("Generating login response for existing OTP user: {}", user.getEmail());
+            // Generate real Cognito tokens using admin API
+            // This requires the user to exist in Cognito with a password
+            // We'll use the stored password or generate a new temporary one
             
-            // Generate simple JWT-like tokens for session management
-            String simpleToken = "otp-session-" + user.getId() + "-" + System.currentTimeMillis();
+            // Try to get or create Cognito tokens
+            String tempPassword = UUID.randomUUID().toString() + "Aa1!";
+            String email = user.getEmail();
             
-            // Create response with basic user info and simple tokens
-            UserAuthLoginResponseDto response = UserAuthLoginResponseDto.builder()
-                    .idToken(simpleToken)
-                    .accessToken(simpleToken)
-                    .refreshToken("refresh-" + simpleToken)
-                    .tokenType("Bearer")
-                    .expiresIn(3600)
-                    .build();
-            
-            // Add user details
-            UserTransformer.intoUserAuthLoginRes(user, response);
-            
-            // Add permissions
             try {
-                UserPermissionsResponseDto userPermissions = permissionService.getUserPermissions(user.getId());
+                // First, ensure user exists in Cognito
+                try {
+                    AdminGetUserRequest getUserRequest = AdminGetUserRequest.builder()
+                            .userPoolId(userPoolId)
+                            .username(email)
+                            .build();
+                    cognitoClient.adminGetUser(getUserRequest);
+                    log.info("OTP user exists in Cognito: {}", email);
+                } catch (Exception e) {
+                    // User doesn't exist in Cognito, create them
+                    log.warn("OTP user not in Cognito, creating: {}", email);
+                    
+                    List<AttributeType> attributes = new ArrayList<>();
+                    attributes.add(AttributeType.builder().name("email").value(email).build());
+                    attributes.add(AttributeType.builder().name("email_verified").value("true").build());
+                    attributes.add(AttributeType.builder().name("phone_number").value(user.getPhoneNumber()).build());
+                    
+                    AdminCreateUserRequest createUserRequest = AdminCreateUserRequest.builder()
+                            .userPoolId(userPoolId)
+                            .username(email)
+                            .userAttributes(attributes)
+                            .temporaryPassword(tempPassword)
+                            .messageAction(MessageActionType.SUPPRESS)
+                            .build();
+                    cognitoClient.adminCreateUser(createUserRequest);
+                    
+                    // Set permanent password
+                    AdminSetUserPasswordRequest setPasswordRequest = AdminSetUserPasswordRequest.builder()
+                            .userPoolId(userPoolId)
+                            .username(email)
+                            .password(tempPassword)
+                            .permanent(true)
+                            .build();
+                    cognitoClient.adminSetUserPassword(setPasswordRequest);
+                    
+                    // Add to student group
+                    try {
+                        AdminAddUserToGroupRequest addToGroupRequest = AdminAddUserToGroupRequest.builder()
+                                .userPoolId(userPoolId)
+                                .username(email)
+                                .groupName("STUDENT")
+                                .build();
+                        cognitoClient.adminAddUserToGroup(addToGroupRequest);
+                    } catch (Exception groupEx) {
+                        log.warn("Could not add user to group: {}", groupEx.getMessage());
+                    }
+                }
                 
-                List<String> allPermissionNames = userPermissions.getAllPermissions().stream()
-                        .map(PermissionResponseDto::getName)
-                        .collect(Collectors.toList());
+                // Reset password to ensure we can authenticate
+                AdminSetUserPasswordRequest setPasswordRequest = AdminSetUserPasswordRequest.builder()
+                        .userPoolId(userPoolId)
+                        .username(email)
+                        .password(tempPassword)
+                        .permanent(true)
+                        .build();
+                cognitoClient.adminSetUserPassword(setPasswordRequest);
                 
-                Map<String, List<String>> categorizedPermissions = userPermissions.getAllPermissions().stream()
-                        .filter(p -> p.getCategory() != null)
-                        .collect(Collectors.groupingBy(
-                                PermissionResponseDto::getCategory,
-                                Collectors.mapping(PermissionResponseDto::getName, Collectors.toList())));
+                // Authenticate and get real tokens
+                String secretHash = CognitoUtil.calculateSecretHash(clientId, clientSecret, email);
                 
-                UserAuthLoginResponseDto.UserPermissionInfo permissionInfo = UserAuthLoginResponseDto.UserPermissionInfo
-                        .builder()
-                        .roleName(user.getRole().getName())
-                        .allPermissions(allPermissionNames)
-                        .categories(categorizedPermissions)
+                Map<String, String> authParams = new HashMap<>();
+                authParams.put("USERNAME", email);
+                authParams.put("PASSWORD", tempPassword);
+                authParams.put("SECRET_HASH", secretHash);
+                
+                AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
+                        .authFlow(AuthFlowType.ADMIN_NO_SRP_AUTH)
+                        .clientId(clientId)
+                        .userPoolId(userPoolId)
+                        .authParameters(authParams)
                         .build();
                 
-                response.setPermissions(permissionInfo);
-            } catch (Exception e) {
-                log.warn("Failed to load permissions for user {}: {}", user.getId(), e.getMessage());
+                AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
+                
+                // Create response with real Cognito tokens
+                UserAuthLoginResponseDto response = UserAuthLoginResponseDto.builder()
+                        .idToken(authResponse.authenticationResult().idToken())
+                        .accessToken(authResponse.authenticationResult().accessToken())
+                        .refreshToken(authResponse.authenticationResult().refreshToken())
+                        .tokenType(authResponse.authenticationResult().tokenType())
+                        .expiresIn(authResponse.authenticationResult().expiresIn())
+                        .build();
+                
+                // Add user details
+                UserTransformer.intoUserAuthLoginRes(user, response);
+                
+                // Add permissions
+                try {
+                    UserPermissionsResponseDto userPermissions = permissionService.getUserPermissions(user.getId());
+                    
+                    List<String> allPermissionNames = userPermissions.getAllPermissions().stream()
+                            .map(PermissionResponseDto::getName)
+                            .collect(Collectors.toList());
+                    
+                    Map<String, List<String>> categorizedPermissions = userPermissions.getAllPermissions().stream()
+                            .filter(p -> p.getCategory() != null)
+                            .collect(Collectors.groupingBy(
+                                    PermissionResponseDto::getCategory,
+                                    Collectors.mapping(PermissionResponseDto::getName, Collectors.toList())));
+                    
+                    UserAuthLoginResponseDto.UserPermissionInfo permissionInfo = UserAuthLoginResponseDto.UserPermissionInfo
+                            .builder()
+                            .roleName(user.getRole().getName())
+                            .allPermissions(allPermissionNames)
+                            .categories(categorizedPermissions)
+                            .build();
+                    
+                    response.setPermissions(permissionInfo);
+                } catch (Exception e) {
+                    log.warn("Failed to load permissions for user {}: {}", user.getId(), e.getMessage());
+                }
+                
+                log.info("Successfully generated real Cognito tokens for OTP user: {}", email);
+                return response;
+                
+            } catch (Exception cognitoEx) {
+                log.error("Failed to generate Cognito tokens for OTP user {}: {}", email, cognitoEx.getMessage(), cognitoEx);
+                throw new CustomException("Failed to complete login. Please try again.");
             }
-            
-            return response;
             
         } catch (Exception e) {
             log.error("Failed to generate tokens for user: {}", user.getEmail(), e);
@@ -819,5 +939,397 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.error("Failed to create minimal user for email: {}", email, e);
             throw new CustomException("Failed to create account. Please try again.");
         }
+    }
+
+    // ============================================
+    // Google OAuth Methods
+    // ============================================
+
+    @Override
+    public GoogleAuthUrlResponseDto getGoogleAuthUrl(String redirectUri) {
+        log.info("Generating Google OAuth URL with redirectUri: {}", redirectUri);
+        
+        if (cognitoDomain == null || cognitoDomain.isEmpty()) {
+            throw new CustomException("Cognito domain not configured. Please configure aws.cognito.domain");
+        }
+
+        // Use provided redirectUri or fall back to configured default
+        String finalRedirectUri = (redirectUri != null && !redirectUri.isEmpty()) 
+            ? redirectUri 
+            : googleRedirectUri;
+
+        if (finalRedirectUri == null || finalRedirectUri.isEmpty()) {
+            throw new CustomException("Google redirect URI not configured");
+        }
+
+        // Generate a random state for CSRF protection
+        String state = UUID.randomUUID().toString();
+
+        try {
+            // Build Cognito Hosted UI URL for Google OAuth
+            String authUrl = String.format(
+                "https://%s/oauth2/authorize?response_type=code&client_id=%s&redirect_uri=%s&identity_provider=Google&scope=email+openid+profile&state=%s",
+                cognitoDomain,
+                clientId,
+                URLEncoder.encode(finalRedirectUri, StandardCharsets.UTF_8),
+                state
+            );
+
+            log.info("Generated Google OAuth URL: {}", authUrl);
+
+            return GoogleAuthUrlResponseDto.builder()
+                    .authUrl(authUrl)
+                    .state(state)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to generate Google OAuth URL: {}", e.getMessage(), e);
+            throw new CustomException("Failed to generate Google OAuth URL");
+        }
+    }
+
+    @Override
+    @Transactional
+    public UserAuthLoginResponseDto handleGoogleCallback(GoogleAuthCallbackRequestDto request) {
+        log.info("Handling Google OAuth callback");
+        
+        String code = request.getCode();
+        String redirectUri = request.getRedirectUri();
+        
+        if (code == null || code.isEmpty()) {
+            throw new CustomException("Authorization code is required");
+        }
+
+        // Use provided redirectUri or fall back to configured default
+        String finalRedirectUri = (redirectUri != null && !redirectUri.isEmpty()) 
+            ? redirectUri 
+            : googleRedirectUri;
+
+        try {
+            // Exchange authorization code for tokens via Cognito token endpoint
+            Map<String, Object> tokenResponse = exchangeCodeForTokens(code, finalRedirectUri);
+            
+            // Extract tokens
+            String idToken = (String) tokenResponse.get("id_token");
+            String accessToken = (String) tokenResponse.get("access_token");
+            String refreshToken = (String) tokenResponse.get("refresh_token");
+            Integer expiresIn = (Integer) tokenResponse.get("expires_in");
+
+            if (idToken == null) {
+                throw new CustomException("Failed to get ID token from Google OAuth");
+            }
+
+            // Decode ID token to get user info
+            DecodedJWT decodedToken = JWT.decode(idToken);
+            String email = decodedToken.getClaim("email").asString();
+            String firstName = decodedToken.getClaim("given_name").asString();
+            String lastName = decodedToken.getClaim("family_name").asString();
+            String picture = decodedToken.getClaim("picture").asString();
+
+            if (email == null || email.isEmpty()) {
+                throw new CustomException("Email not found in Google account");
+            }
+
+            email = email.toLowerCase().trim();
+            log.info("Google OAuth user email: {}", email);
+
+            // Check if user exists
+            User existingUser = userRepository.findByEmail(email);
+            
+            if (existingUser != null) {
+                // Existing user - update profile picture if available
+                if (picture != null && !picture.isEmpty() && 
+                    (existingUser.getProfilePicture() == null || existingUser.getProfilePicture().isEmpty())) {
+                    existingUser.setProfilePicture(picture);
+                    userRepository.save(existingUser);
+                }
+                
+                log.info("Existing user login via Google OAuth: {}", email);
+                return generateGoogleOAuthTokensForUser(existingUser, idToken, accessToken, refreshToken, expiresIn);
+            } else {
+                // New user - create account
+                log.info("Creating new user via Google OAuth: {}", email);
+                return createGoogleOAuthUser(email, firstName, lastName, picture, idToken, accessToken, refreshToken, expiresIn);
+            }
+
+        } catch (CustomException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to handle Google OAuth callback: {}", e.getMessage(), e);
+            throw new CustomException("Failed to complete Google sign-in. Please try again.");
+        }
+    }
+
+    private Map<String, Object> exchangeCodeForTokens(String code, String redirectUri) {
+        log.info("Exchanging authorization code for tokens");
+        
+        String tokenEndpoint = String.format("https://%s/oauth2/token", cognitoDomain);
+        
+        RestTemplate restTemplate = new RestTemplate();
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        
+        // Add basic auth header with client credentials
+        String credentials = clientId + ":" + clientSecret;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
+        headers.set("Authorization", "Basic " + encodedCredentials);
+
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "authorization_code");
+        body.add("code", code);
+        body.add("redirect_uri", redirectUri);
+        body.add("client_id", clientId);
+
+        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<Map> response = restTemplate.exchange(
+                tokenEndpoint,
+                HttpMethod.POST,
+                requestEntity,
+                Map.class
+            );
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                log.info("Successfully exchanged code for tokens");
+                return response.getBody();
+            } else {
+                throw new CustomException("Failed to exchange authorization code for tokens");
+            }
+        } catch (Exception e) {
+            log.error("Token exchange failed: {}", e.getMessage(), e);
+            throw new CustomException("Failed to exchange authorization code. Please try again.");
+        }
+    }
+
+    private UserAuthLoginResponseDto createGoogleOAuthUser(
+            String email, 
+            String firstName, 
+            String lastName, 
+            String picture,
+            String idToken,
+            String accessToken,
+            String refreshToken,
+            Integer expiresIn) {
+        
+        // Get default student role
+        Role studentRole = roleRepository.findByName("STUDENT")
+                .orElseThrow(() -> new CustomException("Default student role not found"));
+
+        // Generate unique username from email (same logic as OTP)
+        String baseUsername = sanitizeUsername(email.split("@")[0]);
+        String username = baseUsername;
+        int counter = 1;
+        while (userRepository.findByUsername(username) != null) {
+            username = baseUsername + counter++;
+        }
+
+        // Use Google profile data or placeholders
+        String userFirstName = (firstName != null && !firstName.isEmpty()) ? firstName : "User";
+        String userLastName = (lastName != null) ? lastName : "";
+
+        // Create user
+        User user = User.builder()
+                .email(email)
+                .username(username)
+                .firstName(userFirstName)
+                .lastName(userLastName)
+                .phoneNumber("+1000000000" + (new Random().nextInt(9000) + 1000)) // Placeholder
+                .role(studentRole)
+                .profileIncomplete(true) // Mark for later completion (need phone number)
+                .profilePicture(picture)
+                .accountLocked(false)
+                .failedLoginAttempts(0)
+                .build();
+
+        // Create associated student record
+        Student student = new Student();
+        student.setUser(user);
+        user.setStudent(student);
+
+        // Save to local database
+        User savedUser = userRepository.save(user);
+        log.info("Google OAuth user created with email: {}, username: {}", email, username);
+
+        // Link to Cognito (Google users are automatically created in Cognito via federation)
+        try {
+            // Add user to student group if not already
+            AdminAddUserToGroupRequest addToGroupRequest = AdminAddUserToGroupRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(email)
+                    .groupName("STUDENT")
+                    .build();
+            cognitoClient.adminAddUserToGroup(addToGroupRequest);
+            log.info("Google OAuth user added to STUDENT group in Cognito: {}", email);
+        } catch (software.amazon.awssdk.services.cognitoidentityprovider.model.ResourceNotFoundException e) {
+            log.error("User or group not found in Cognito for Google OAuth user: {}", email, e);
+        } catch (software.amazon.awssdk.services.cognitoidentityprovider.model.UserNotFoundException e) {
+            log.error("Google OAuth user not found in Cognito: {}", email, e);
+        } catch (Exception e) {
+            log.info("User already in group or group assignment handled by federation: {} - {}", email, e.getMessage());
+        }
+
+        return generateGoogleOAuthTokensForUser(savedUser, idToken, accessToken, refreshToken, expiresIn);
+    }
+
+    private UserAuthLoginResponseDto generateGoogleOAuthTokensForUser(
+            User user,
+            String idToken,
+            String accessToken, 
+            String refreshToken,
+            Integer expiresIn) {
+        
+        log.info("Generating login response for Google OAuth user: {}", user.getEmail());
+
+        // Create response with Cognito tokens from Google OAuth
+        UserAuthLoginResponseDto response = UserAuthLoginResponseDto.builder()
+                .idToken(idToken)
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(expiresIn != null ? expiresIn : 3600)
+                .build();
+
+        // Add user details
+        UserTransformer.intoUserAuthLoginRes(user, response);
+
+        // Add permissions
+        try {
+            UserPermissionsResponseDto userPermissions = permissionService.getUserPermissions(user.getId());
+
+            List<String> allPermissionNames = userPermissions.getAllPermissions().stream()
+                    .map(PermissionResponseDto::getName)
+                    .collect(Collectors.toList());
+
+            Map<String, List<String>> categorizedPermissions = userPermissions.getAllPermissions().stream()
+                    .filter(p -> p.getCategory() != null)
+                    .collect(Collectors.groupingBy(
+                            PermissionResponseDto::getCategory,
+                            Collectors.mapping(PermissionResponseDto::getName, Collectors.toList())));
+
+            UserAuthLoginResponseDto.UserPermissionInfo permissionInfo = UserAuthLoginResponseDto.UserPermissionInfo
+                    .builder()
+                    .roleName(user.getRole().getName())
+                    .allPermissions(allPermissionNames)
+                    .categories(categorizedPermissions)
+                    .build();
+
+            response.setPermissions(permissionInfo);
+        } catch (Exception e) {
+            log.warn("Failed to load permissions for user {}: {}", user.getId(), e.getMessage());
+        }
+
+        return response;
+    }
+
+    private String sanitizeUsername(String input) {
+        // Remove special characters, keep only alphanumeric and dots/underscores
+        return input.replaceAll("[^a-zA-Z0-9._]", "").toLowerCase();
+    }
+
+    @Override
+    @Transactional
+    public String updateUsername(Long userId, UpdateUsernameRequestDto request) {
+        log.info("Updating username for userId: {}", userId);
+        
+        // Find the user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException("User with ID " + userId + " not found"));
+        
+        // Only allow username update for users with incomplete profiles (OAuth users)
+        if (!Boolean.TRUE.equals(user.getProfileIncomplete())) {
+            throw new CustomException("Username can only be changed for users with incomplete profiles");
+        }
+        
+        String newUsername = request.getUsername().toLowerCase().trim();
+        
+        // Check if new username is different from current
+        if (newUsername.equals(user.getUsername())) {
+            return "Username is already set to this value";
+        }
+        
+        // Check if username already exists
+        if (userRepository.existsByUsername(newUsername)) {
+            throw new CustomException("This username is already in use. Please choose a different one.");
+        }
+        
+        // Update username
+        user.setUsername(newUsername);
+        userRepository.save(user);
+        
+        log.info("Username updated successfully for userId: {} to: {}", userId, newUsername);
+        return "Username updated successfully";
+    }
+
+    @Override
+    @Transactional
+    public String updatePhoneNumber(Long userId, String phoneNumber) {
+        log.info("Updating phone number for userId: {}", userId);
+        
+        // Find the user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new CustomException("User with ID " + userId + " not found"));
+        
+        // Check if user has a placeholder phone (can update) or real phone
+        String currentPhone = user.getPhoneNumber();
+        boolean hasPlaceholderPhone = currentPhone != null && currentPhone.startsWith("+1000000000");
+        
+        // Only allow phone update for users with placeholder phones or incomplete profiles
+        if (!hasPlaceholderPhone && !Boolean.TRUE.equals(user.getProfileIncomplete())) {
+            throw new CustomException("Phone number can only be updated for users with incomplete profiles");
+        }
+        
+        // Validate and normalize the new phone number
+        String normalizedPhone = phoneNumber.trim();
+        if (!normalizedPhone.matches("^\\+?[0-9]{10,15}$")) {
+            throw new CustomException("Invalid phone number format. Must be 10-15 digits with optional + prefix");
+        }
+        
+        // Check if new phone is different from current
+        if (normalizedPhone.equals(currentPhone)) {
+            return "Phone number is already set to this value";
+        }
+        
+        // Check if phone number already exists for another user
+        User existingUser = userRepository.findByPhoneNumber(normalizedPhone);
+        if (existingUser != null && !existingUser.getId().equals(userId)) {
+            throw new CustomException("This phone number is already in use by another account");
+        }
+        
+        // Update phone number in local database
+        user.setPhoneNumber(normalizedPhone);
+        
+        // If user now has real phone, check if profile should be marked complete
+        // Only mark complete if they also have a real username (not auto-generated)
+        if (hasPlaceholderPhone && Boolean.TRUE.equals(user.getProfileIncomplete())) {
+            // Keep profileIncomplete true - let user manually complete profile
+            // or add additional logic here to check other required fields
+            log.info("User {} updated phone from placeholder, profileIncomplete still true", userId);
+        }
+        
+        userRepository.save(user);
+        
+        // Optionally update in Cognito as well
+        try {
+            AdminUpdateUserAttributesRequest cognitoRequest = AdminUpdateUserAttributesRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(user.getEmail())
+                    .userAttributes(
+                            AttributeType.builder()
+                                    .name("phone_number")
+                                    .value(normalizedPhone)
+                                    .build()
+                    )
+                    .build();
+            cognitoClient.adminUpdateUserAttributes(cognitoRequest);
+            log.info("Phone number updated in Cognito for user: {}", user.getEmail());
+        } catch (Exception e) {
+            // Log but don't fail - local DB is the source of truth
+            log.warn("Failed to update phone in Cognito for user {}: {}", user.getEmail(), e.getMessage());
+        }
+        
+        log.info("Phone number updated successfully for userId: {}", userId);
+        return "Phone number updated successfully";
     }
 }

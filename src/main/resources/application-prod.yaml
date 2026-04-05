@@ -32,6 +32,10 @@ aws:
     region: ${AWS_REGION:ap-south-2}
     accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
     secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
+    # Google OAuth via Cognito Hosted UI
+    domain: ${COGNITO_DOMAIN}
+    google:
+      redirectUri: ${GOOGLE_REDIRECT_URI:https://meritcap.com/auth/callback}
   s3:
     bucketName: ${S3_BUCKET_NAME}
     accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}

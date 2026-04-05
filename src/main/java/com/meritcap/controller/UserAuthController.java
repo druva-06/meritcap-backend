@@ -1,11 +1,15 @@
 package com.meritcap.controller;
 
 import com.meritcap.DTOs.requestDTOs.userAuth.ChangePasswordRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.GoogleAuthCallbackRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.SendEmailOTPRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.UpdatePhoneRequestDto;
+import com.meritcap.DTOs.requestDTOs.userAuth.UpdateUsernameRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthLoginRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthRefreshRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.UserAuthSignUpRequestDto;
 import com.meritcap.DTOs.requestDTOs.userAuth.VerifyEmailOTPRequestDto;
+import com.meritcap.DTOs.responseDTOs.userAuth.GoogleAuthUrlResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.SendEmailOTPResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthLoginResponseDto;
 import com.meritcap.DTOs.responseDTOs.userAuth.UserAuthRefreshResponseDto;
@@ -15,6 +19,7 @@ import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
 import com.meritcap.service.UserAuthService;
 import com.meritcap.utils.ToMap;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -258,6 +263,108 @@ public class UserAuthController {
         } catch (Exception e) {
             log.error("Verify OTP internal error: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    // ============================================
+    // Google OAuth Endpoints
+    // ============================================
+
+    @GetMapping("/google/url")
+    @Operation(summary = "Get Google OAuth URL", description = "Returns the URL to redirect users to for Google sign-in")
+    public ResponseEntity<?> getGoogleAuthUrl(@RequestParam(required = false) String redirectUri) {
+        log.info("Get Google OAuth URL request received");
+        try {
+            GoogleAuthUrlResponseDto response = userAuthService.getGoogleAuthUrl(redirectUri);
+            log.info("Google OAuth URL generated successfully");
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "Google OAuth URL generated", 200));
+        } catch (CustomException e) {
+            log.error("Get Google OAuth URL error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Get Google OAuth URL internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PostMapping("/google/callback")
+    @Operation(summary = "Handle Google OAuth callback", description = "Exchanges authorization code for tokens and creates/logs in user")
+    public ResponseEntity<?> handleGoogleCallback(@RequestBody @Valid GoogleAuthCallbackRequestDto request, BindingResult bindingResult) {
+        log.info("Google OAuth callback request received");
+        if (bindingResult.hasErrors()) {
+            log.error("Google OAuth callback validation errors occurred");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
+        }
+
+        try {
+            UserAuthLoginResponseDto response = userAuthService.handleGoogleCallback(request);
+            log.info("Google OAuth login successful");
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiSuccessResponse<>(response, "Login successful!", 200));
+        } catch (CustomException e) {
+            log.error("Google OAuth callback error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.OK).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Google OAuth callback internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PutMapping("/username")
+    @Operation(summary = "Update username", description = "Update username for users with incomplete profiles (OAuth users)")
+    public ResponseEntity<?> updateUsername(
+            @RequestBody @Valid UpdateUsernameRequestDto request,
+            BindingResult bindingResult,
+            @RequestParam Long userId) {
+        log.info("Update username request for userId: {}", userId);
+        
+        if (bindingResult.hasErrors()) {
+            log.error("Validation errors in username update: {}", bindingResult.getAllErrors());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
+        }
+        
+        try {
+            String result = userAuthService.updateUsername(userId, request);
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(result, "Username updated successfully", 200));
+        } catch (CustomException e) {
+            log.error("Username update error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Username update internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PutMapping("/phone")
+    @Operation(summary = "Update phone number", description = "Update phone number for users with placeholder phones or incomplete profiles")
+    public ResponseEntity<?> updatePhoneNumber(
+            @RequestBody @Valid UpdatePhoneRequestDto request,
+            BindingResult bindingResult,
+            @RequestParam Long userId) {
+        log.info("Update phone number request for userId: {}", userId);
+        
+        if (bindingResult.hasErrors()) {
+            log.error("Validation errors in phone update: {}", bindingResult.getAllErrors());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
+        }
+        
+        try {
+            String result = userAuthService.updatePhoneNumber(userId, request.getPhoneNumber());
+            return ResponseEntity.status(HttpStatus.OK)
+                    .body(new ApiSuccessResponse<>(result, "Phone number updated successfully", 200));
+        } catch (CustomException e) {
+            log.error("Phone number update error: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Phone number update internal error: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
     }
 }

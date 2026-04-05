@@ -42,6 +42,10 @@ aws:
     region: ${AWS_REGION:ap-south-2}
     accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID:dummyDevAccessKey}
     secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY:dummyDevSecretKey}
+    # Google OAuth via Cognito Hosted UI
+    domain: ${COGNITO_DOMAIN:your-domain.auth.ap-south-2.amazoncognito.com}
+    google:
+      redirectUri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/auth/callback}
   s3:
     bucketName: ${S3_BUCKET_NAME:dummy-dev-bucket}
     accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID:dummyDevAccessKey}

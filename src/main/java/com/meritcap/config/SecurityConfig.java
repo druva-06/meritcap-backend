@@ -43,6 +43,7 @@ public class SecurityConfig {
             "/invitation/validate",
             "/auth/login",
             "/auth/email-otp/**",
+            "/auth/google/**",
             "/auth/forgotPassword/**",
             "/auth/resendVerificationCode/**",
             "/auth/confirmVerificationCode",

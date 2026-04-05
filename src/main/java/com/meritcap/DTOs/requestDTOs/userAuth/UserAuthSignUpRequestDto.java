@@ -36,7 +36,7 @@ public class UserAuthSignUpRequestDto {
     @NotBlank(message = "Password is required")
     String password;
 
-    @NotBlank(message = "Phone number is required")
+    @Pattern(regexp = "^$|^\\+?[0-9]{10,15}$", message = "Phone number must be 10-15 digits with optional + prefix")
     String phoneNumber;
 
     @Pattern(regexp = "^(http|https)://.*$", message = "Invalid profile picture URL")
