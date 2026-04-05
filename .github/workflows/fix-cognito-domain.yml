@@ -1,0 +1,111 @@
+name: Fix Cognito Domain Configuration
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to fix (prod/uat/dev)'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - uat
+          - dev
+
+jobs:
+  fix-cognito-domain:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          
+          if [ "$ENV" = "prod" ]; then
+            echo "namespace=prod" >> $GITHUB_OUTPUT
+            echo "vps_host=${{ secrets.VPS_HOST_PROD }}" >> $GITHUB_OUTPUT
+            echo "cognito_domain=ap-south-2esp2vgk0k.auth.ap-south-2.amazoncognito.com" >> $GITHUB_OUTPUT
+            echo "api_url=https://api.meritcap.com" >> $GITHUB_OUTPUT
+          elif [ "$ENV" = "uat" ]; then
+            echo "namespace=uat" >> $GITHUB_OUTPUT
+            echo "vps_host=${{ secrets.VPS_HOST_UAT }}" >> $GITHUB_OUTPUT
+            echo "cognito_domain=ap-south-2esp2vgk0k.auth.ap-south-2.amazoncognito.com" >> $GITHUB_OUTPUT
+            echo "api_url=https://api-uat.meritcap.com" >> $GITHUB_OUTPUT
+          else
+            echo "namespace=dev" >> $GITHUB_OUTPUT
+            echo "vps_host=${{ secrets.VPS_HOST_DEV }}" >> $GITHUB_OUTPUT
+            echo "cognito_domain=ap-south-2esp2vgk0k.auth.ap-south-2.amazoncognito.com" >> $GITHUB_OUTPUT
+            echo "api_url=https://api-dev.meritcap.com" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fix Cognito Domain Configuration
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.env.outputs.vps_host }}
+          username: deployer
+          password: ${{ secrets.DEPLOYER_PASSWORD }}
+          timeout: 120s
+          command_timeout: 10m
+          script: |
+            set -e
+            
+            NAMESPACE="${{ steps.env.outputs.namespace }}"
+            COGNITO_DOMAIN="${{ steps.env.outputs.cognito_domain }}"
+            
+            echo "🔧 Fixing Cognito Domain Configuration in $NAMESPACE..."
+            
+            # Check if secret exists
+            if ! microk8s kubectl get secret meritcap-backend-secrets -n $NAMESPACE > /dev/null 2>&1; then
+              echo "❌ Secret meritcap-backend-secrets not found in namespace $NAMESPACE"
+              exit 1
+            fi
+            
+            echo "📝 Adding COGNITO_DOMAIN to $NAMESPACE secrets..."
+            
+            # Patch the existing secret to add the missing COGNITO_DOMAIN
+            microk8s kubectl patch secret meritcap-backend-secrets -n $NAMESPACE --type='merge' -p="{\"data\":{\"COGNITO_DOMAIN\":\"$(echo -n "${COGNITO_DOMAIN}" | base64 -w 0)\"}}"
+            
+            echo "✅ COGNITO_DOMAIN added to $NAMESPACE secrets"
+            
+            echo "🔄 Restarting backend deployment to pick up new configuration..."
+            
+            # Restart the deployment to pick up the new environment variable
+            microk8s kubectl rollout restart deployment/meritcap-backend -n $NAMESPACE
+            
+            echo "⏳ Waiting for deployment to be ready..."
+            
+            # Wait for rollout to complete
+            if microk8s kubectl rollout status deployment/meritcap-backend -n $NAMESPACE --timeout=300s; then
+              echo "✅ Deployment restarted successfully"
+            else
+              echo "❌ Deployment rollout failed"
+              microk8s kubectl get pods -n $NAMESPACE -l app=meritcap-backend
+              exit 1
+            fi
+            
+            echo "🔍 Checking pod status..."
+            microk8s kubectl get pods -n $NAMESPACE -l app=meritcap-backend
+            
+            echo "✅ Cognito domain configuration fix complete!"
+            echo "🚀 Google OAuth should now be working in $NAMESPACE"
+
+      - name: Test Google OAuth endpoint
+        run: |
+          echo "🧪 Testing Google OAuth endpoint..."
+          API_URL="${{ steps.env.outputs.api_url }}"
+          
+          # Wait a bit for the service to be ready
+          sleep 30
+          
+          # Test the OAuth endpoint
+          if curl -f -s "$API_URL/auth/google/url?redirectUri=https://meritcap.com/auth/callback" > /dev/null; then
+            echo "✅ Google OAuth endpoint is working!"
+          else
+            echo "⚠️  Google OAuth endpoint test failed - may need more time to start"
+            echo "Try testing manually: $API_URL/auth/google/url?redirectUri=https://meritcap.com/auth/callback"
+          fi
