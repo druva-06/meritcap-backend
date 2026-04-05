@@ -70,4 +70,4 @@ jobs:
               meritcap-backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.env }}-${{ github.sha }} \
               -n ${{ steps.env.outputs.namespace }}
             microk8s kubectl rollout status deployment/meritcap-backend \
-              -n ${{ steps.env.outputs.namespace }} --timeout=120s
+              -n ${{ steps.env.outputs.namespace }} --timeout=300s
