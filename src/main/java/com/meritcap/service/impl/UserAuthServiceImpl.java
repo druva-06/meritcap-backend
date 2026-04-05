@@ -258,14 +258,15 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         log.debug("AuthParams: {}", authParams.keySet());
 
-        InitiateAuthRequest authRequest = InitiateAuthRequest.builder()
+        AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
                 .clientId(clientId)
-                .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
+                .userPoolId(userPoolId)
+                .authFlow(AuthFlowType.ADMIN_NO_SRP_AUTH)
                 .authParameters(authParams)
                 .build();
 
         try {
-            InitiateAuthResponse authResponse = cognitoClient.initiateAuth(authRequest);
+            AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
             log.info("Cognito authentication successful for email: {}", userAuthLoginRequestDto.getEmail());
 
             // Reset failed attempts
@@ -276,7 +277,7 @@ public class UserAuthServiceImpl implements UserAuthService {
                 log.debug("Reset failed login attempts for user: {}", user.getEmail());
             }
 
-            UserAuthLoginResponseDto userAuthLoginResponseDto = UserAuthTransformer.toLoginResDto(authResponse);
+            UserAuthLoginResponseDto userAuthLoginResponseDto = UserAuthTransformer.toAdminLoginResDto(authResponse);
 
             DecodedJWT jwt = JWT.decode(userAuthLoginResponseDto.getIdToken());
             String email = jwt.getClaim("email").asString();

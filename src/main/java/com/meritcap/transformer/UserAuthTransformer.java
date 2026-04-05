@@ -6,11 +6,24 @@ import com.meritcap.model.Role;
 import com.meritcap.model.User;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.InitiateAuthResponse;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminInitiateAuthResponse;
 
 @Slf4j
 public class UserAuthTransformer {
     public static UserAuthLoginResponseDto toLoginResDto(InitiateAuthResponse authResponse) {
         log.info("UserAuthTransformer toLoginResDto");
+
+        return UserAuthLoginResponseDto.builder()
+                .accessToken(authResponse.authenticationResult().accessToken())
+                .idToken(authResponse.authenticationResult().idToken())
+                .refreshToken(authResponse.authenticationResult().refreshToken())
+                .expiresIn(authResponse.authenticationResult().expiresIn())
+                .tokenType(authResponse.authenticationResult().tokenType())
+                .build();
+    }
+
+    public static UserAuthLoginResponseDto toAdminLoginResDto(AdminInitiateAuthResponse authResponse) {
+        log.info("UserAuthTransformer toAdminLoginResDto");
 
         return UserAuthLoginResponseDto.builder()
                 .accessToken(authResponse.authenticationResult().accessToken())
