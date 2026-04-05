@@ -16,6 +16,10 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.web.filter.OncePerRequestFilter;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.UserNotFoundException;
 
 import java.io.IOException;
 import java.util.List;
@@ -27,13 +31,18 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtDecoder jwtDecoder;
     private final UserRepository userRepository;
+    private final CognitoIdentityProviderClient cognitoClient;
+    private final String userPoolId;
 
-    public CognitoJwtAuthFilter(String userPoolId, String region, UserRepository userRepository) {
+    public CognitoJwtAuthFilter(String userPoolId, String region, UserRepository userRepository,
+            CognitoIdentityProviderClient cognitoClient) {
         String jwkUrl = String.format(
                 "https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
                 region, userPoolId);
         this.jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkUrl).build();
         this.userRepository = userRepository;
+        this.cognitoClient = cognitoClient;
+        this.userPoolId = userPoolId;
         log.info("CognitoJwtAuthFilter initialized with JWK URL: {}", jwkUrl);
     }
 
@@ -211,6 +220,43 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
+        if (localUser == null) {
+            localUser = resolveUserByCognitoUsername(cognitoUsername);
+        }
+
+        if (localUser == null) {
+            localUser = resolveUserByCognitoUsername(username);
+        }
+
+        if (localUser == null) {
+            localUser = resolveUserByCognitoUsername(principal);
+        }
+
         return localUser;
+    }
+
+    private User resolveUserByCognitoUsername(String cognitoUsername) {
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            return null;
+        }
+        try {
+            var response = cognitoClient.adminGetUser(AdminGetUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(cognitoUsername)
+                    .build());
+            String email = response.userAttributes().stream()
+                    .filter(attr -> "email".equalsIgnoreCase(attr.name()))
+                    .map(AttributeType::value)
+                    .findFirst()
+                    .orElse(null);
+            if (email != null && !email.isBlank()) {
+                return userRepository.findByEmailIgnoreCase(email);
+            }
+        } catch (UserNotFoundException ignored) {
+            log.debug("Cognito username {} not found while resolving local user", cognitoUsername);
+        } catch (Exception ex) {
+            log.debug("Failed to resolve local user from Cognito username {}: {}", cognitoUsername, ex.getMessage());
+        }
+        return null;
     }
 }

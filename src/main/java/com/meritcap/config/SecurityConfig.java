@@ -23,6 +23,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
 import com.meritcap.repository.UserRepository;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
 
 import java.util.Arrays;
 import java.util.List;
@@ -39,6 +40,9 @@ public class SecurityConfig {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private CognitoIdentityProviderClient cognitoClient;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/auth/signup",
@@ -112,7 +116,7 @@ public class SecurityConfig {
         String region = firstPresent("aws.region", "AWS_REGION");
 
         if (StringUtils.hasText(userPoolId) && StringUtils.hasText(region)) {
-            return new CognitoJwtAuthFilter(userPoolId, region, userRepository);
+            return new CognitoJwtAuthFilter(userPoolId, region, userRepository, cognitoClient);
         }
 
         if (isDevProfile()) {

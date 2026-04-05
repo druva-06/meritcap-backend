@@ -9,6 +9,11 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminGetUserRequest;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.UserNotFoundException;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.Locale;
 
@@ -18,6 +23,10 @@ import java.util.Locale;
 public class AuthenticatedUserResolver {
 
     private final UserRepository userRepository;
+    private final CognitoIdentityProviderClient cognitoClient;
+
+    @Value("${aws.cognito.userPoolId}")
+    private String userPoolId;
 
     public User resolveCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext() != null
@@ -98,6 +107,35 @@ public class AuthenticatedUserResolver {
         if (user == null && principal.contains("@")) {
             user = userRepository.findByEmail(principal.toLowerCase(Locale.ROOT));
         }
+        if (user == null) {
+            user = resolveUserByCognitoUsername(principal);
+        }
         return user;
+    }
+
+    private User resolveUserByCognitoUsername(String cognitoUsername) {
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            return null;
+        }
+        try {
+            var response = cognitoClient.adminGetUser(AdminGetUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(cognitoUsername)
+                    .build());
+            String email = response.userAttributes().stream()
+                    .filter(attr -> "email".equalsIgnoreCase(attr.name()))
+                    .map(AttributeType::value)
+                    .findFirst()
+                    .orElse(null);
+            if (email != null && !email.isBlank()) {
+                return userRepository.findByEmailIgnoreCase(email);
+            }
+        } catch (UserNotFoundException ignored) {
+            log.debug("Cognito username {} not found while resolving authenticated user", cognitoUsername);
+        } catch (Exception ex) {
+            log.debug("Failed to resolve authenticated user from Cognito username {}: {}", cognitoUsername,
+                    ex.getMessage());
+        }
+        return null;
     }
 }

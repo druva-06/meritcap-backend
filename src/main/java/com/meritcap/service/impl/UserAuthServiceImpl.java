@@ -1029,6 +1029,17 @@ public class UserAuthServiceImpl implements UserAuthService {
             String firstName = decodedToken.getClaim("given_name").asString();
             String lastName = decodedToken.getClaim("family_name").asString();
             String picture = decodedToken.getClaim("picture").asString();
+            String cognitoUsername = firstNonBlank(
+                    decodedToken.getClaim("cognito:username").asString(),
+                    decodedToken.getClaim("username").asString());
+            String subject = decodedToken.getSubject();
+
+            if ((email == null || email.isEmpty()) && cognitoUsername != null && !cognitoUsername.isBlank()) {
+                email = resolveEmailByCognitoUsername(cognitoUsername);
+            }
+            if ((email == null || email.isEmpty()) && subject != null && !subject.isBlank()) {
+                email = resolveEmailByCognitoUsername(subject);
+            }
 
             if (email == null || email.isEmpty()) {
                 throw new CustomException("Email not found in Google account");
@@ -1050,11 +1061,13 @@ public class UserAuthServiceImpl implements UserAuthService {
                 
                 log.info("Existing user login via Google OAuth: {}", email);
                 ensureStudentGroupMembership(email);
+                ensureStudentGroupMembershipByUsername(cognitoUsername);
                 return generateGoogleOAuthTokensForUser(existingUser, idToken, accessToken, refreshToken, expiresIn);
             } else {
                 // New user - create account
                 log.info("Creating new user via Google OAuth: {}", email);
-                return createGoogleOAuthUser(email, firstName, lastName, picture, idToken, accessToken, refreshToken, expiresIn);
+                return createGoogleOAuthUser(email, firstName, lastName, picture, cognitoUsername,
+                        idToken, accessToken, refreshToken, expiresIn);
             }
 
         } catch (CustomException e) {
@@ -1113,6 +1126,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             String firstName, 
             String lastName, 
             String picture,
+            String cognitoUsername,
             String idToken,
             String accessToken,
             String refreshToken,
@@ -1159,6 +1173,7 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         // Link to Cognito group
         ensureStudentGroupMembership(email);
+        ensureStudentGroupMembershipByUsername(cognitoUsername);
 
         return generateGoogleOAuthTokensForUser(savedUser, idToken, accessToken, refreshToken, expiresIn);
     }
@@ -1245,6 +1260,32 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
     }
 
+    @Override
+    public void ensureStudentGroupMembershipByUsername(String cognitoUsername) {
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            return;
+        }
+        try {
+            AdminAddUserToGroupRequest addToGroupRequest = AdminAddUserToGroupRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(cognitoUsername.trim())
+                    .groupName("STUDENT")
+                    .build();
+            cognitoClient.adminAddUserToGroup(addToGroupRequest);
+            log.info("Ensured STUDENT group membership in Cognito for username: {}", cognitoUsername);
+        } catch (UserNotFoundException e) {
+            log.warn("Cannot add user to STUDENT group (user not found in Cognito): {}", cognitoUsername);
+        } catch (ResourceNotFoundException e) {
+            log.warn("Cannot add user to STUDENT group (group or pool missing) for {}: {}", cognitoUsername,
+                    e.getMessage());
+        } catch (CognitoIdentityProviderException e) {
+            String err = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage();
+            log.info("Skipping STUDENT group assignment for {}: {}", cognitoUsername, err);
+        } catch (Exception e) {
+            log.info("Skipping STUDENT group assignment for {}: {}", cognitoUsername, e.getMessage());
+        }
+    }
+
     private String resolveCognitoUsername(String email) {
         try {
             AdminGetUserRequest directLookup = AdminGetUserRequest.builder()
@@ -1274,6 +1315,38 @@ public class UserAuthServiceImpl implements UserAuthService {
             log.debug("Cognito email-based username lookup failed for {}: {}", email, ex.getMessage());
         }
 
+        return null;
+    }
+
+    private String resolveEmailByCognitoUsername(String cognitoUsername) {
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            return null;
+        }
+        try {
+            AdminGetUserRequest request = AdminGetUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(cognitoUsername)
+                    .build();
+            var response = cognitoClient.adminGetUser(request);
+            return response.userAttributes().stream()
+                    .filter(attr -> "email".equalsIgnoreCase(attr.name()))
+                    .map(AttributeType::value)
+                    .filter(value -> value != null && !value.isBlank())
+                    .map(value -> value.trim().toLowerCase())
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ex) {
+            log.debug("Unable to resolve email for Cognito username {}: {}", cognitoUsername, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
         return null;
     }
 

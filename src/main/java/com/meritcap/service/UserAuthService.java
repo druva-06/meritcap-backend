@@ -56,6 +56,13 @@ public interface UserAuthService {
     void ensureStudentGroupMembership(String email);
 
     /**
+     * Ensures a Cognito user is present in the STUDENT group using Cognito username.
+     * Useful for social-login usernames like google_*
+     * @param cognitoUsername Cognito username
+     */
+    void ensureStudentGroupMembershipByUsername(String cognitoUsername);
+
+    /**
      * Update the username for users with incomplete profiles (OAuth users)
      * @param userId The user ID
      * @param request The request containing the new username
