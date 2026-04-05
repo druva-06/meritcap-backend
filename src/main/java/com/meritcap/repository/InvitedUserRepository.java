@@ -34,6 +34,8 @@ public interface InvitedUserRepository extends JpaRepository<InvitedUser, Long> 
     // Find by invited by user
     List<InvitedUser> findByInvitedById(Long invitedById);
 
+    void deleteAllByUserId(Long userId);
+
     // Find pending invitations that are expired
     @Query("SELECT i FROM InvitedUser i WHERE i.status = 'PENDING' AND i.expiresAt < :now")
     List<InvitedUser> findExpiredPendingInvitations(@Param("now") LocalDateTime now);
@@ -63,4 +65,12 @@ public interface InvitedUserRepository extends JpaRepository<InvitedUser, Long> 
     // Find by role
     @Query("SELECT i FROM InvitedUser i WHERE i.role.id = :roleId")
     List<InvitedUser> findByRoleId(@Param("roleId") Long roleId);
+
+    @Modifying
+    @Query("UPDATE InvitedUser i SET i.user = null, i.updatedAt = :now WHERE i.user.id = :userId")
+    int clearUserReference(@Param("userId") Long userId, @Param("now") LocalDateTime now);
+
+    @Modifying
+    @Query("DELETE FROM InvitedUser i WHERE i.invitedBy.id = :userId")
+    void deleteAllByInvitedById(@Param("userId") Long userId);
 }

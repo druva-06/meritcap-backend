@@ -13,6 +13,8 @@ public interface EmailOTPRepository extends JpaRepository<EmailOTP, Long> {
     Optional<EmailOTP> findTopByEmailAndConsumedFalseOrderByCreatedAtDesc(String email);
     
     Optional<EmailOTP> findByEmailAndOtpAndConsumedFalse(String email, String otp);
+
+    void deleteAllByEmail(String email);
     
     void deleteByExpiresAtBefore(LocalDateTime dateTime);
 }
