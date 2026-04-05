@@ -2,9 +2,8 @@ package com.meritcap.service.impl;
 
 import com.meritcap.DTOs.requestDTOs.studentEducation.StudentEducationRequestDto;
 import com.meritcap.DTOs.responseDTOs.studentEducation.StudentEducationResponseDto;
-import com.meritcap.DTOs.responseDTOs.document.DocumentResponseDto;
-import com.meritcap.enums.DocumentType;
 import com.meritcap.exception.AlreadyExistException;
+import com.meritcap.exception.CustomException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.model.Document;
 import com.meritcap.model.Student;
@@ -20,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -86,6 +84,18 @@ public class StudentEducationServiceImpl implements StudentEducationService {
 
     @Override
     @Transactional
+    public StudentEducationResponseDto updateStudentEducationForCurrentUser(StudentEducationRequestDto dto, Long educationId, Long currentUserId) {
+        StudentEducation education = studentEducationRepository.findById(educationId)
+                .orElseThrow(() -> new NotFoundException("Education record not found"));
+        if (education.getStudent() == null || education.getStudent().getUser() == null
+                || !education.getStudent().getUser().getId().equals(currentUserId)) {
+            throw new CustomException("You do not have permission to access this resource");
+        }
+        return updateStudentEducation(dto, educationId);
+    }
+
+    @Override
+    @Transactional
     public void deleteStudentEducation(Long educationId) {
         log.info("Deleting student education: {}", educationId);
 
@@ -98,6 +108,18 @@ public class StudentEducationServiceImpl implements StudentEducationService {
         }
         studentEducationRepository.delete(education);
         log.info("Student education deleted: {}", educationId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteStudentEducationForCurrentUser(Long educationId, Long currentUserId) {
+        StudentEducation education = studentEducationRepository.findById(educationId)
+                .orElseThrow(() -> new NotFoundException("Education record not found"));
+        if (education.getStudent() == null || education.getStudent().getUser() == null
+                || !education.getStudent().getUser().getId().equals(currentUserId)) {
+            throw new CustomException("You do not have permission to access this resource");
+        }
+        deleteStudentEducation(educationId);
     }
 
     @Override

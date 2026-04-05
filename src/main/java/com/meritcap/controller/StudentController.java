@@ -8,6 +8,7 @@ import com.meritcap.exception.NotFoundException;
 import com.meritcap.exception.ValidationException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.StudentProfileService;
 import com.meritcap.utils.ToMap;
 import jakarta.validation.Valid;
@@ -28,6 +29,7 @@ import java.util.ArrayList;
 public class StudentController {
 
     private final StudentProfileService studentProfileService;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
     // Create/Add Profile (Student Self)
     @PostMapping("/add")
@@ -40,6 +42,7 @@ public class StudentController {
                     .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
+            authenticatedUserResolver.assertCurrentUserOwns(requestDto.getUserId());
             StudentProfileResponseDto responseDto = studentProfileService.addProfile(requestDto);
             log.info("Profile added for userId: {}", responseDto.getUserId());
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -61,12 +64,19 @@ public class StudentController {
     public ResponseEntity<?> getOwnProfile(@RequestParam Long userId) {
         log.info("Get own profile request for userId: {}", userId);
         try {
+            authenticatedUserResolver.assertCurrentUserOwns(userId);
             StudentProfileResponseDto responseDto = studentProfileService.getProfileByUserId(userId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(responseDto, "Profile fetched successfully", 200));
         } catch (NotFoundException e) {
             log.warn("Profile not found for userId: {}", userId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (ValidationException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
+        } catch (com.meritcap.exception.CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
         } catch (Exception e) {
             log.error("Error fetching profile", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -85,6 +95,7 @@ public class StudentController {
                     .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
+            authenticatedUserResolver.assertCurrentUserOwns(userId);
             StudentProfileResponseDto responseDto = studentProfileService.updateProfile(userId, requestDto);
             log.info("Profile updated for userId: {}", userId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(responseDto, "Profile updated successfully", 200));
@@ -96,6 +107,9 @@ public class StudentController {
             log.warn("Profile not found for update userId: {}", userId);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (com.meritcap.exception.CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
         } catch (Exception e) {
             log.error("Error updating profile", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

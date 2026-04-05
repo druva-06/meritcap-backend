@@ -258,15 +258,14 @@ public class UserAuthServiceImpl implements UserAuthService {
 
         log.debug("AuthParams: {}", authParams.keySet());
 
-        AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
+        InitiateAuthRequest authRequest = InitiateAuthRequest.builder()
                 .clientId(clientId)
-                .userPoolId(userPoolId)
-                .authFlow(AuthFlowType.ADMIN_NO_SRP_AUTH)
+                .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
                 .authParameters(authParams)
                 .build();
 
         try {
-            AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
+            InitiateAuthResponse authResponse = cognitoClient.initiateAuth(authRequest);
             log.info("Cognito authentication successful for email: {}", userAuthLoginRequestDto.getEmail());
 
             // Reset failed attempts
@@ -277,7 +276,7 @@ public class UserAuthServiceImpl implements UserAuthService {
                 log.debug("Reset failed login attempts for user: {}", user.getEmail());
             }
 
-            UserAuthLoginResponseDto userAuthLoginResponseDto = UserAuthTransformer.toAdminLoginResDto(authResponse);
+            UserAuthLoginResponseDto userAuthLoginResponseDto = UserAuthTransformer.toLoginResDto(authResponse);
 
             DecodedJWT jwt = JWT.decode(userAuthLoginResponseDto.getIdToken());
             String email = jwt.getClaim("email").asString();
@@ -295,6 +294,9 @@ public class UserAuthServiceImpl implements UserAuthService {
             }
 
             UserTransformer.intoUserAuthLoginRes(user, userAuthLoginResponseDto);
+
+            // Ensure user belongs to STUDENT group so JWT authorities include ROLE_STUDENT
+            ensureStudentGroupMembership(email);
 
             // Add user permissions to login response
             try {
@@ -705,14 +707,15 @@ public class UserAuthServiceImpl implements UserAuthService {
         // Check if user exists
         User existingUser = userRepository.findByEmail(email);
         
-        if (existingUser != null) {
-            // Existing user - generate tokens from Cognito
-            log.info("Existing user login via OTP: {}", email);
-            return generateTokensForExistingUser(existingUser);
-        } else {
-            // New user - create minimal account
-            log.info("Creating new user via OTP: {}", email);
-            return createMinimalUserAndGenerateTokens(email);
+            if (existingUser != null) {
+                // Existing user - generate tokens from Cognito
+                log.info("Existing user login via OTP: {}", email);
+                ensureStudentGroupMembership(email);
+                return generateTokensForExistingUser(existingUser);
+            } else {
+                // New user - create minimal account
+                log.info("Creating new user via OTP: {}", email);
+                return createMinimalUserAndGenerateTokens(email);
         }
     }
 
@@ -794,14 +797,13 @@ public class UserAuthServiceImpl implements UserAuthService {
                 authParams.put("PASSWORD", tempPassword);
                 authParams.put("SECRET_HASH", secretHash);
                 
-                AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
-                        .authFlow(AuthFlowType.ADMIN_NO_SRP_AUTH)
+                InitiateAuthRequest authRequest = InitiateAuthRequest.builder()
+                        .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
                         .clientId(clientId)
-                        .userPoolId(userPoolId)
                         .authParameters(authParams)
                         .build();
                 
-                AdminInitiateAuthResponse authResponse = cognitoClient.adminInitiateAuth(authRequest);
+                InitiateAuthResponse authResponse = cognitoClient.initiateAuth(authRequest);
                 
                 // Create response with real Cognito tokens
                 UserAuthLoginResponseDto response = UserAuthLoginResponseDto.builder()
@@ -934,6 +936,7 @@ public class UserAuthServiceImpl implements UserAuthService {
             }
 
             // Generate login response without Cognito tokens for now
+            ensureStudentGroupMembership(email);
             return generateTokensForExistingUser(savedUser);
 
         } catch (Exception e) {
@@ -1046,6 +1049,7 @@ public class UserAuthServiceImpl implements UserAuthService {
                 }
                 
                 log.info("Existing user login via Google OAuth: {}", email);
+                ensureStudentGroupMembership(email);
                 return generateGoogleOAuthTokensForUser(existingUser, idToken, accessToken, refreshToken, expiresIn);
             } else {
                 // New user - create account
@@ -1153,23 +1157,8 @@ public class UserAuthServiceImpl implements UserAuthService {
         User savedUser = userRepository.save(user);
         log.info("Google OAuth user created with email: {}, username: {}", email, username);
 
-        // Link to Cognito (Google users are automatically created in Cognito via federation)
-        try {
-            // Add user to student group if not already
-            AdminAddUserToGroupRequest addToGroupRequest = AdminAddUserToGroupRequest.builder()
-                    .userPoolId(userPoolId)
-                    .username(email)
-                    .groupName("STUDENT")
-                    .build();
-            cognitoClient.adminAddUserToGroup(addToGroupRequest);
-            log.info("Google OAuth user added to STUDENT group in Cognito: {}", email);
-        } catch (software.amazon.awssdk.services.cognitoidentityprovider.model.ResourceNotFoundException e) {
-            log.error("User or group not found in Cognito for Google OAuth user: {}", email, e);
-        } catch (software.amazon.awssdk.services.cognitoidentityprovider.model.UserNotFoundException e) {
-            log.error("Google OAuth user not found in Cognito: {}", email, e);
-        } catch (Exception e) {
-            log.info("User already in group or group assignment handled by federation: {} - {}", email, e.getMessage());
-        }
+        // Link to Cognito group
+        ensureStudentGroupMembership(email);
 
         return generateGoogleOAuthTokensForUser(savedUser, idToken, accessToken, refreshToken, expiresIn);
     }
@@ -1222,6 +1211,70 @@ public class UserAuthServiceImpl implements UserAuthService {
         }
 
         return response;
+    }
+
+    @Override
+    public void ensureStudentGroupMembership(String email) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        String normalizedEmail = email.trim().toLowerCase();
+        String cognitoUsername = resolveCognitoUsername(normalizedEmail);
+        if (cognitoUsername == null || cognitoUsername.isBlank()) {
+            log.warn("Skipping STUDENT group assignment. Cognito username could not be resolved for {}", normalizedEmail);
+            return;
+        }
+        try {
+            AdminAddUserToGroupRequest addToGroupRequest = AdminAddUserToGroupRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(cognitoUsername)
+                    .groupName("STUDENT")
+                    .build();
+            cognitoClient.adminAddUserToGroup(addToGroupRequest);
+            log.info("Ensured STUDENT group membership in Cognito for user: {} ({})", normalizedEmail, cognitoUsername);
+        } catch (UserNotFoundException e) {
+            log.warn("Cannot add user to STUDENT group (user not found in Cognito): {}", cognitoUsername);
+        } catch (ResourceNotFoundException e) {
+            log.warn("Cannot add user to STUDENT group (group or pool missing) for {}: {}", normalizedEmail, e.getMessage());
+        } catch (CognitoIdentityProviderException e) {
+            // Ignore 'already a member' class of errors and continue.
+            String err = e.awsErrorDetails() != null ? e.awsErrorDetails().errorMessage() : e.getMessage();
+            log.info("Skipping STUDENT group assignment for {}: {}", normalizedEmail, err);
+        } catch (Exception e) {
+            log.info("Skipping STUDENT group assignment for {}: {}", normalizedEmail, e.getMessage());
+        }
+    }
+
+    private String resolveCognitoUsername(String email) {
+        try {
+            AdminGetUserRequest directLookup = AdminGetUserRequest.builder()
+                    .userPoolId(userPoolId)
+                    .username(email)
+                    .build();
+            cognitoClient.adminGetUser(directLookup);
+            return email;
+        } catch (UserNotFoundException ignored) {
+            // continue with email-based search
+        } catch (CognitoIdentityProviderException ex) {
+            String err = ex.awsErrorDetails() != null ? ex.awsErrorDetails().errorMessage() : ex.getMessage();
+            log.debug("Direct Cognito username lookup failed for {}: {}", email, err);
+        }
+
+        try {
+            ListUsersRequest listUsersRequest = ListUsersRequest.builder()
+                    .userPoolId(userPoolId)
+                    .filter("email = \"" + email + "\"")
+                    .limit(1)
+                    .build();
+            ListUsersResponse listUsersResponse = cognitoClient.listUsers(listUsersRequest);
+            if (listUsersResponse.users() != null && !listUsersResponse.users().isEmpty()) {
+                return listUsersResponse.users().get(0).username();
+            }
+        } catch (Exception ex) {
+            log.debug("Cognito email-based username lookup failed for {}: {}", email, ex.getMessage());
+        }
+
+        return null;
     }
 
     private String sanitizeUsername(String input) {

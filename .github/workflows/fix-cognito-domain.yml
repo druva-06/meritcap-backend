@@ -109,3 +109,58 @@ jobs:
             echo "⚠️  Google OAuth endpoint test failed - may need more time to start"
             echo "Try testing manually: $API_URL/auth/google/url?redirectUri=https://meritcap.com/auth/callback"
           fi
+
+  fix-cognito-auth-flows:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    needs: fix-cognito-domain
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          if [ "$ENV" = "prod" ]; then
+            echo "vps_host=${{ secrets.VPS_HOST_PROD }}" >> $GITHUB_OUTPUT
+            echo "namespace=prod" >> $GITHUB_OUTPUT
+          elif [ "$ENV" = "uat" ]; then
+            echo "vps_host=${{ secrets.VPS_HOST_UAT }}" >> $GITHUB_OUTPUT
+            echo "namespace=uat" >> $GITHUB_OUTPUT
+          else
+            echo "vps_host=${{ secrets.VPS_HOST_DEV }}" >> $GITHUB_OUTPUT
+            echo "namespace=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Enable Cognito auth flows on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.env.outputs.vps_host }}
+          username: deployer
+          password: ${{ secrets.DEPLOYER_PASSWORD }}
+          timeout: 120s
+          command_timeout: 10m
+          script: |
+            set -e
+            if ! command -v aws >/dev/null 2>&1; then
+              echo "❌ AWS CLI not found on server"
+              exit 1
+            fi
+            if ! command -v jq >/dev/null 2>&1; then
+              echo "❌ jq not found on server"
+              exit 1
+            fi
+            NAMESPACE="${{ steps.env.outputs.namespace }}"
+            COGNITO_USER_POOL_ID=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.COGNITO_USER_POOL_ID}' | base64 -d)
+            COGNITO_CLIENT_ID=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.COGNITO_CLIENT_ID}' | base64 -d)
+            AWS_REGION=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.AWS_REGION}' | base64 -d)
+            export COGNITO_USER_POOL_ID COGNITO_CLIENT_ID AWS_REGION
+            aws cognito-idp update-user-pool-client \
+              --user-pool-id "$COGNITO_USER_POOL_ID" \
+              --client-id "$COGNITO_CLIENT_ID" \
+              --region "$AWS_REGION" \
+              --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_ADMIN_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" "ALLOW_USER_SRP_AUTH"
+            aws cognito-idp describe-user-pool-client \
+              --user-pool-id "$COGNITO_USER_POOL_ID" \
+              --client-id "$COGNITO_CLIENT_ID" \
+              --region "$AWS_REGION" | jq '.UserPoolClient.ExplicitAuthFlows'

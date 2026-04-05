@@ -50,6 +50,12 @@ public interface UserAuthService {
     UserAuthLoginResponseDto handleGoogleCallback(@Valid GoogleAuthCallbackRequestDto request);
 
     /**
+     * Ensures a Cognito user is present in the STUDENT group. Safe to call repeatedly.
+     * @param email user email
+     */
+    void ensureStudentGroupMembership(String email);
+
+    /**
      * Update the username for users with incomplete profiles (OAuth users)
      * @param userId The user ID
      * @param request The request containing the new username

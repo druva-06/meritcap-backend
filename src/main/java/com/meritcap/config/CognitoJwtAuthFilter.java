@@ -1,5 +1,7 @@
 package com.meritcap.config;
 
+import com.meritcap.model.User;
+import com.meritcap.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,12 +26,14 @@ import java.util.stream.Collectors;
 public class CognitoJwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtDecoder jwtDecoder;
+    private final UserRepository userRepository;
 
-    public CognitoJwtAuthFilter(String userPoolId, String region) {
+    public CognitoJwtAuthFilter(String userPoolId, String region, UserRepository userRepository) {
         String jwkUrl = String.format(
                 "https://cognito-idp.%s.amazonaws.com/%s/.well-known/jwks.json",
                 region, userPoolId);
         this.jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkUrl).build();
+        this.userRepository = userRepository;
         log.info("CognitoJwtAuthFilter initialized with JWK URL: {}", jwkUrl);
     }
 
@@ -98,28 +102,56 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
                             throw new RuntimeException("Only access tokens are allowed");
                         }
 
+                        String email = jwt.getClaimAsString("email");
+                        String username = jwt.getClaimAsString("username");
+                        String cognitoUsername = jwt.getClaimAsString("cognito:username");
+                        String principal = firstNonBlank(email, cognitoUsername, username);
+
                         // Extract Cognito groups and convert to ROLE_ authorities
                         List<String> groups = jwt.getClaimAsStringList("cognito:groups");
 
                         List<GrantedAuthority> authorities;
                         if (groups == null || groups.isEmpty()) {
-                            log.warn("No Cognito groups found for user {}, assigning default USER role",
-                                    jwt.getClaimAsString("username"));
-                            authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                            // Fallback to DB role to avoid accidental ROLE_USER downgrade.
+                            User localUser = null;
+                            if (email != null && !email.isBlank()) {
+                                localUser = userRepository.findByEmailIgnoreCase(email);
+                            }
+                            if (localUser == null && username != null && username.contains("@")) {
+                                localUser = userRepository.findByEmailIgnoreCase(username);
+                            }
+                            if (localUser == null && username != null && !username.isBlank()) {
+                                localUser = userRepository.findByUsername(username);
+                            }
+                            if (localUser == null && cognitoUsername != null && cognitoUsername.contains("@")) {
+                                localUser = userRepository.findByEmailIgnoreCase(cognitoUsername);
+                            }
+                            if (localUser == null && cognitoUsername != null && !cognitoUsername.isBlank()) {
+                                localUser = userRepository.findByUsername(cognitoUsername);
+                            }
+
+                            if (localUser != null && localUser.getRole() != null && localUser.getRole().getName() != null) {
+                                String roleName = localUser.getRole().getName().toUpperCase();
+                                authorities = List.of(new SimpleGrantedAuthority("ROLE_" + roleName));
+                                log.info("No Cognito groups found; mapped DB role {} for user {}", roleName, localUser.getEmail());
+                            } else {
+                                log.warn("No Cognito groups and no DB role match for user {}, assigning ROLE_USER",
+                                        principal);
+                                authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                            }
                         } else {
                             authorities = groups.stream()
                                     .map(g -> new SimpleGrantedAuthority("ROLE_" + g.toUpperCase()))
                                     .collect(Collectors.toList());
                         }
 
-                        String username = jwt.getClaimAsString("username");
-                        MDC.put("user", username);
+                        MDC.put("user", principal != null ? principal : "unknown");
 
-                        log.info("User {} authenticated with roles {}", username, authorities);
+                        log.info("User {} authenticated with roles {}", principal, authorities);
 
                         // Set Spring Security context
                         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                username, null, authorities);
+                                principal, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(authentication);
 
                     } catch (Exception ex) {
@@ -141,5 +173,14 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
             log.debug("Request complete: rid={}, status={}", requestId, response.getStatus());
             MDC.clear();
         }
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 }
