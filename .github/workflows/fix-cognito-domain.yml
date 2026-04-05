@@ -142,40 +142,78 @@ jobs:
           command_timeout: 10m
           script: |
             set -e
-            export PATH="$HOME/.local/bin:$PATH"
-
-            if ! command -v aws >/dev/null 2>&1; then
-              echo "⚠️ AWS CLI not found; installing for deployer user..."
-              if command -v python3 >/dev/null 2>&1; then
-                python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
-                python3 -m pip install --user --quiet awscli
-              elif command -v pip3 >/dev/null 2>&1; then
-                pip3 install --user --quiet awscli
-              else
-                echo "❌ AWS CLI not found and python3/pip3 unavailable for installation"
-                exit 1
-              fi
-            fi
-
-            if ! command -v aws >/dev/null 2>&1; then
-              echo "❌ AWS CLI installation failed"
+            NAMESPACE="${{ steps.env.outputs.namespace }}"
+            if ! microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" > /dev/null 2>&1; then
+              echo "❌ Secret meritcap-backend-secrets not found in namespace $NAMESPACE"
               exit 1
             fi
 
-            aws --version
-            NAMESPACE="${{ steps.env.outputs.namespace }}"
-            COGNITO_USER_POOL_ID=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.COGNITO_USER_POOL_ID}' | base64 -d)
-            COGNITO_CLIENT_ID=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.COGNITO_CLIENT_ID}' | base64 -d)
-            AWS_REGION=$(microk8s kubectl get secret meritcap-backend-secrets -n "$NAMESPACE" -o jsonpath='{.data.AWS_REGION}' | base64 -d)
-            export COGNITO_USER_POOL_ID COGNITO_CLIENT_ID AWS_REGION
-            aws cognito-idp update-user-pool-client \
-              --user-pool-id "$COGNITO_USER_POOL_ID" \
-              --client-id "$COGNITO_CLIENT_ID" \
-              --region "$AWS_REGION" \
-              --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_ADMIN_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" "ALLOW_USER_SRP_AUTH"
-            aws cognito-idp describe-user-pool-client \
-              --user-pool-id "$COGNITO_USER_POOL_ID" \
-              --client-id "$COGNITO_CLIENT_ID" \
-              --region "$AWS_REGION" \
-              --query 'UserPoolClient.ExplicitAuthFlows' \
-              --output json
+            JOB_NAME="cognito-auth-flow-fix-$(date +%s)"
+
+            cat <<EOF | microk8s kubectl apply -n "$NAMESPACE" -f -
+            apiVersion: batch/v1
+            kind: Job
+            metadata:
+              name: ${JOB_NAME}
+            spec:
+              backoffLimit: 0
+              template:
+                spec:
+                  restartPolicy: Never
+                  containers:
+                    - name: awscli
+                      image: public.ecr.aws/aws-cli/aws-cli:2.15.54
+                      command: ["/bin/sh", "-c"]
+                      args:
+                        - |
+                          set -e
+                          aws cognito-idp update-user-pool-client \
+                            --user-pool-id "$COGNITO_USER_POOL_ID" \
+                            --client-id "$COGNITO_CLIENT_ID" \
+                            --region "$AWS_DEFAULT_REGION" \
+                            --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_ADMIN_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" "ALLOW_USER_SRP_AUTH"
+                          aws cognito-idp describe-user-pool-client \
+                            --user-pool-id "$COGNITO_USER_POOL_ID" \
+                            --client-id "$COGNITO_CLIENT_ID" \
+                            --region "$AWS_DEFAULT_REGION" \
+                            --query 'UserPoolClient.ExplicitAuthFlows' \
+                            --output json
+                      env:
+                        - name: AWS_ACCESS_KEY_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: meritcap-backend-secrets
+                              key: IAM_MERITCAP_ACCESS_KEY_ID
+                        - name: AWS_SECRET_ACCESS_KEY
+                          valueFrom:
+                            secretKeyRef:
+                              name: meritcap-backend-secrets
+                              key: IAM_MERITCAP_SECRET_ACCESS_KEY
+                        - name: AWS_DEFAULT_REGION
+                          valueFrom:
+                            secretKeyRef:
+                              name: meritcap-backend-secrets
+                              key: AWS_REGION
+                        - name: COGNITO_USER_POOL_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: meritcap-backend-secrets
+                              key: COGNITO_USER_POOL_ID
+                        - name: COGNITO_CLIENT_ID
+                          valueFrom:
+                            secretKeyRef:
+                              name: meritcap-backend-secrets
+                              key: COGNITO_CLIENT_ID
+            EOF
+
+            if microk8s kubectl wait --for=condition=complete "job/${JOB_NAME}" -n "$NAMESPACE" --timeout=300s; then
+              microk8s kubectl logs "job/${JOB_NAME}" -n "$NAMESPACE"
+              microk8s kubectl delete job "${JOB_NAME}" -n "$NAMESPACE" --ignore-not-found=true
+            else
+              echo "❌ Cognito auth-flow fix job failed in namespace $NAMESPACE"
+              microk8s kubectl logs "job/${JOB_NAME}" -n "$NAMESPACE" || true
+              microk8s kubectl describe "job/${JOB_NAME}" -n "$NAMESPACE" || true
+              microk8s kubectl get pods -n "$NAMESPACE" -l "job-name=${JOB_NAME}" -o wide || true
+              microk8s kubectl delete job "${JOB_NAME}" -n "$NAMESPACE" --ignore-not-found=true
+              exit 1
+            fi
