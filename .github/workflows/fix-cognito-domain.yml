@@ -113,7 +113,7 @@ jobs:
   fix-cognito-auth-flows:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment }}
-    needs: fix-cognito-domain
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
 
