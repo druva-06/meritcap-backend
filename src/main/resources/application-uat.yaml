@@ -35,7 +35,7 @@ aws:
     accessKeyId: ${IAM_MERITCAP_ACCESS_KEY_ID}
     secretAccessKey: ${IAM_MERITCAP_SECRET_ACCESS_KEY}
     # Google OAuth via Cognito Hosted UI
-    domain: ${COGNITO_DOMAIN}
+    domain: ${COGNITO_DOMAIN:}
     google:
       redirectUri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/auth/callback}
   s3:
