@@ -9,11 +9,12 @@ import com.meritcap.exception.BadRequestException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.InvitationService;
 import com.meritcap.utils.ToMap;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,10 +29,11 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/invitation")
+@RequiredArgsConstructor
 public class InvitationController {
 
-    @Autowired
-    private InvitationService invitationService;
+    private final InvitationService invitationService;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
     /**
      * Create a new user invitation (Admin only)
@@ -51,8 +53,7 @@ public class InvitationController {
 
         try {
             // Get current user ID from authentication
-            // TODO: Extract user ID from JWT token or authentication object
-            Long invitedByUserId = 1L; // Placeholder - replace with actual user ID extraction
+            Long invitedByUserId = authenticatedUserResolver.resolveCurrentUserId();
 
             InvitationResponseDto response = invitationService.createInvitation(requestDto, invitedByUserId);
 
