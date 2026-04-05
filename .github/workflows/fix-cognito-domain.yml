@@ -168,14 +168,14 @@ jobs:
                         - |
                           set -e
                           aws cognito-idp update-user-pool-client \
-                            --user-pool-id "$COGNITO_USER_POOL_ID" \
-                            --client-id "$COGNITO_CLIENT_ID" \
-                            --region "$AWS_DEFAULT_REGION" \
+                            --user-pool-id "\$COGNITO_USER_POOL_ID" \
+                            --client-id "\$COGNITO_CLIENT_ID" \
+                            --region "\$AWS_DEFAULT_REGION" \
                             --explicit-auth-flows "ALLOW_USER_PASSWORD_AUTH" "ALLOW_ADMIN_USER_PASSWORD_AUTH" "ALLOW_REFRESH_TOKEN_AUTH" "ALLOW_USER_SRP_AUTH"
                           aws cognito-idp describe-user-pool-client \
-                            --user-pool-id "$COGNITO_USER_POOL_ID" \
-                            --client-id "$COGNITO_CLIENT_ID" \
-                            --region "$AWS_DEFAULT_REGION" \
+                            --user-pool-id "\$COGNITO_USER_POOL_ID" \
+                            --client-id "\$COGNITO_CLIENT_ID" \
+                            --region "\$AWS_DEFAULT_REGION" \
                             --query 'UserPoolClient.ExplicitAuthFlows' \
                             --output json
                       env:
