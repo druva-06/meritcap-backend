@@ -84,12 +84,26 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public DocumentResponseDto uploadDocument(DocumentUploadRequestDto requestDto, MultipartFile file, String uploadedBy) {
+        User requester = resolveUserByPrincipal(uploadedBy);
+        String canonicalUploadedBy = requester != null && requester.getEmail() != null
+                ? requester.getEmail()
+                : uploadedBy;
+
         log.info("Received upload request: referenceType={}, referenceId={}, documentType={}, category={}, uploadedBy={}",
                 requestDto.getReferenceType(), requestDto.getReferenceId(), requestDto.getDocumentType(),
                 requestDto.getCategory(), uploadedBy);
 
         // Validate inputs
         validateRequest(requestDto, file);
+
+        if ("STUDENT".equalsIgnoreCase(requestDto.getReferenceType()) && requester != null && !isAdmin(requester)) {
+            if (requester.getStudent() == null || requester.getStudent().getId() == null) {
+                throw new CustomException("You do not have permission to access this resource");
+            }
+            if (!requester.getStudent().getId().equals(requestDto.getReferenceId())) {
+                throw new CustomException("You do not have permission to access this resource");
+            }
+        }
 
         String contentType = Optional.ofNullable(file.getContentType()).orElse("application/octet-stream");
         long fileSize = file.getSize();
@@ -168,7 +182,7 @@ public class DocumentServiceImpl implements DocumentService {
                 .remarks(requestDto.getRemarks())
                 .documentStatus(DocumentStatus.PENDING)
                 .fileUrl(fileUrl)
-                .uploadedBy(uploadedBy)
+                .uploadedBy(canonicalUploadedBy)
                 .isDeleted(false)
                 .build();
 
@@ -282,8 +296,24 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     public void deleteDocument(Long documentId, String requestedBy) {
         log.info("Delete document request for id={}, by={}", documentId, requestedBy);
+
+        User requester = resolveUserByPrincipal(requestedBy);
+        if (requester == null) {
+            throw new NotFoundException("User not found");
+        }
+
         Document doc = documentRepository.findById(documentId)
                 .orElseThrow(() -> new NotFoundException("Document not found"));
+
+        if (!isAdmin(requester)) {
+            if (!"STUDENT".equalsIgnoreCase(doc.getReferenceType())
+                    || requester.getStudent() == null
+                    || requester.getStudent().getId() == null
+                    || !requester.getStudent().getId().equals(doc.getReferenceId())) {
+                throw new CustomException("You do not have permission to access this resource");
+            }
+        }
+
         doc.setIsDeleted(true);
         documentRepository.save(doc);
         log.info("Document marked as deleted: {}", documentId);
@@ -308,11 +338,15 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         // find local user and student id
-        User user = userRepository.findByEmail(uploadedBy);
+        User user = resolveUserByPrincipal(uploadedBy);
         if (user == null) {
             throw new NotFoundException("User not found");
         }
-        Long studentId = user.getId();
+        if (user.getStudent() == null || user.getStudent().getId() == null) {
+            throw new CustomException("Authenticated student not found");
+        }
+        Long studentId = user.getStudent().getId();
+        String canonicalUploadedBy = user.getEmail() != null ? user.getEmail() : uploadedBy;
 
         // soft-delete existing active PROFILE_IMAGE doc
         documentRepository.findByReferenceTypeAndReferenceIdAndDocumentTypeAndIsDeletedFalse(
@@ -333,7 +367,7 @@ public class DocumentServiceImpl implements DocumentService {
                 .build();
 
         // 1) upload to S3 & save Document (via helper)
-        Map<String, Object> stored = storeDocumentToS3AndDb(reqDto, file, uploadedBy);
+        Map<String, Object> stored = storeDocumentToS3AndDb(reqDto, file, canonicalUploadedBy);
         Document savedDoc = (Document) stored.get("document");
         String newKey = (String) stored.get("fileKey");
         String newUrl = (String) stored.get("fileUrl");
@@ -352,11 +386,11 @@ public class DocumentServiceImpl implements DocumentService {
             AttributeType pictureAttr = AttributeType.builder().name("picture").value(newUrl).build();
             AdminUpdateUserAttributesRequest req = AdminUpdateUserAttributesRequest.builder()
                     .userPoolId(userPoolId)
-                    .username(uploadedBy)
+                    .username(user.getEmail())
                     .userAttributes(pictureAttr)
                     .build();
             cognitoClient.adminUpdateUserAttributes(req);
-            log.info("Cognito picture attribute updated for {}", uploadedBy);
+            log.info("Cognito picture attribute updated for {}", user.getEmail());
 
             // Cognito succeeded -> attempt to delete previous S3 object (best-effort)
             if (prevKey != null) {
@@ -512,5 +546,33 @@ public class DocumentServiceImpl implements DocumentService {
             log.debug("Failed to parse S3 URL to key: {}", e.getMessage());
             return null;
         }
+    }
+
+    private User resolveUserByPrincipal(String principal) {
+        if (principal == null || principal.isBlank()) {
+            return null;
+        }
+        if (principal.startsWith("otp-user-")) {
+            String idPart = principal.substring("otp-user-".length());
+            try {
+                Long userId = Long.parseLong(idPart);
+                return userRepository.findById(userId).orElse(null);
+            } catch (NumberFormatException ignored) {
+                // fallback to email/username matching
+            }
+        }
+        User user = userRepository.findByEmailIgnoreCase(principal);
+        if (user == null) {
+            user = userRepository.findByUsernameIgnoreCase(principal);
+        }
+        if (user == null && principal.contains("@")) {
+            user = userRepository.findByEmail(principal.toLowerCase(Locale.ROOT));
+        }
+        return user;
+    }
+
+    private boolean isAdmin(User user) {
+        return user != null && user.getRole() != null && user.getRole().getName() != null
+                && "ADMIN".equalsIgnoreCase(user.getRole().getName());
     }
 }

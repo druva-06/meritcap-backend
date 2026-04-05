@@ -17,6 +17,7 @@ import com.meritcap.exception.CustomException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.UserAuthService;
 import com.meritcap.utils.ToMap;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,9 +38,11 @@ import java.util.ArrayList;
 public class UserAuthController {
 
     private final UserAuthService userAuthService;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
-    UserAuthController(UserAuthService userAuthService){
+    UserAuthController(UserAuthService userAuthService, AuthenticatedUserResolver authenticatedUserResolver){
         this.userAuthService = userAuthService;
+        this.authenticatedUserResolver = authenticatedUserResolver;
     }
 
     @PostMapping("/signup")
@@ -311,6 +314,7 @@ public class UserAuthController {
     }
 
     @PutMapping("/username")
+    @org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update username", description = "Update username for users with incomplete profiles (OAuth users)")
     public ResponseEntity<?> updateUsername(
             @RequestBody @Valid UpdateUsernameRequestDto request,
@@ -325,6 +329,7 @@ public class UserAuthController {
         }
         
         try {
+            authenticatedUserResolver.assertCurrentUserOwns(userId);
             String result = userAuthService.updateUsername(userId, request);
             return ResponseEntity.status(HttpStatus.OK)
                     .body(new ApiSuccessResponse<>(result, "Username updated successfully", 200));
@@ -340,6 +345,7 @@ public class UserAuthController {
     }
 
     @PutMapping("/phone")
+    @org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
     @Operation(summary = "Update phone number", description = "Update phone number for users with placeholder phones or incomplete profiles")
     public ResponseEntity<?> updatePhoneNumber(
             @RequestBody @Valid UpdatePhoneRequestDto request,
@@ -354,6 +360,7 @@ public class UserAuthController {
         }
         
         try {
+            authenticatedUserResolver.assertCurrentUserOwns(userId);
             String result = userAuthService.updatePhoneNumber(userId, request.getPhoneNumber());
             return ResponseEntity.status(HttpStatus.OK)
                     .body(new ApiSuccessResponse<>(result, "Phone number updated successfully", 200));

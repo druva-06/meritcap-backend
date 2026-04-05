@@ -9,12 +9,11 @@ import com.meritcap.model.MenuPermission;
 import com.meritcap.model.User;
 import com.meritcap.repository.MenuPermissionRepository;
 import com.meritcap.repository.UserRepository;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.MenuConfigService;
 import com.meritcap.service.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -32,6 +31,9 @@ public class MenuConfigServiceImpl implements MenuConfigService {
 
     @Autowired
     private MenuPermissionRepository menuPermissionRepository;
+
+    @Autowired
+    private AuthenticatedUserResolver authenticatedUserResolver;
 
     @Override
     public MenuConfigResponseDto getMenuConfigForUser(Long userId) {
@@ -63,19 +65,8 @@ public class MenuConfigServiceImpl implements MenuConfigService {
 
     @Override
     public MenuConfigResponseDto getMenuConfigForCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new NotFoundException("No authenticated user found");
-        }
-
-        String username = authentication.getName();
-        User user = userRepository.findByUsername(username);
-
-        if (user == null) {
-            throw new NotFoundException("User not found: " + username);
-        }
-
-        return getMenuConfigForUser(user.getId());
+        Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+        return getMenuConfigForUser(currentUserId);
     }
 
     /**

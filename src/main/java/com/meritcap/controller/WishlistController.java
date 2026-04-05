@@ -4,6 +4,7 @@ import com.meritcap.DTOs.requestDTOs.wishlistItem.AddWishlistItemRequest;
 import com.meritcap.DTOs.responseDTOs.wishlistItem.WishlistItemResponse;
 import com.meritcap.response.ApiSuccessResponse;
 import com.meritcap.response.ApiFailureResponse;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.WishlistService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ import java.util.List;
 public class WishlistController {
 
     private final WishlistService wishlistService;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
@@ -30,11 +32,16 @@ public class WishlistController {
             @Valid @RequestBody AddWishlistItemRequest request) {
         log.info("Received request to add course {} to student {}'s wishlist", request.getCollegeCourseId(), studentId);
         try {
+            authenticatedUserResolver.assertCurrentStudentOwns(studentId);
             WishlistItemResponse response = wishlistService.addWishlistItem(studentId, request);
             log.info("Successfully added course {} to wishlist for student {}", request.getCollegeCourseId(),
                     studentId);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(new ApiSuccessResponse<>(response, "Item added to wishlist", 201));
+        } catch (com.meritcap.exception.CustomException e) {
+            log.warn("Forbidden wishlist add access for student {}: {}", studentId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(null, e.getMessage(), 403));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to add course {} to wishlist for student {}: {}", request.getCollegeCourseId(), studentId,
                     e.getMessage());
@@ -53,9 +60,14 @@ public class WishlistController {
     public ResponseEntity<?> getWishlistItems(@PathVariable Long studentId) {
         log.info("Received request to fetch wishlist items for student {}", studentId);
         try {
+            authenticatedUserResolver.assertCurrentStudentOwns(studentId);
             List<WishlistItemResponse> items = wishlistService.getWishlistItems(studentId);
             log.info("Fetched {} wishlist items for student {}", items.size(), studentId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(items, "Wishlist items fetched", 200));
+        } catch (com.meritcap.exception.CustomException e) {
+            log.warn("Forbidden wishlist read access for student {}: {}", studentId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(null, e.getMessage(), 403));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to fetch wishlist for student {}: {}", studentId, e.getMessage());
             return ResponseEntity.badRequest()
@@ -74,9 +86,14 @@ public class WishlistController {
             @PathVariable Long wishlistItemId) {
         log.info("Received request to remove wishlist item {} for student {}", wishlistItemId, studentId);
         try {
+            authenticatedUserResolver.assertCurrentStudentOwns(studentId);
             wishlistService.removeWishlistItem(studentId, wishlistItemId);
             log.info("Removed wishlist item {} for student {}", wishlistItemId, studentId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(null, "Wishlist item removed", 200));
+        } catch (com.meritcap.exception.CustomException e) {
+            log.warn("Forbidden wishlist delete access for student {}: {}", studentId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(null, e.getMessage(), 403));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to remove wishlist item {} for student {}: {}", wishlistItemId, studentId, e.getMessage());
             return ResponseEntity.badRequest()
@@ -94,9 +111,14 @@ public class WishlistController {
     public ResponseEntity<?> getWishlistCount(@PathVariable Long studentId) {
         log.info("Received request to count wishlist items for student {}", studentId);
         try {
+            authenticatedUserResolver.assertCurrentStudentOwns(studentId);
             int count = wishlistService.getWishlistItemCount(studentId);
             log.info("Student {} has {} items in wishlist", studentId, count);
             return ResponseEntity.ok(new ApiSuccessResponse<>(count, "Wishlist item count fetched", 200));
+        } catch (com.meritcap.exception.CustomException e) {
+            log.warn("Forbidden wishlist count access for student {}: {}", studentId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(new ApiFailureResponse<>(null, e.getMessage(), 403));
         } catch (IllegalArgumentException e) {
             log.warn("Failed to count wishlist items for student {}: {}", studentId, e.getMessage());
             return ResponseEntity.badRequest()

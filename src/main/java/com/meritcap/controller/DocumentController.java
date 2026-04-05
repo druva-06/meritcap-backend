@@ -2,8 +2,10 @@ package com.meritcap.controller;
 
 import com.meritcap.DTOs.requestDTOs.document.DocumentUploadRequestDto;
 import com.meritcap.DTOs.responseDTOs.document.DocumentResponseDto;
+import com.meritcap.exception.CustomException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.DocumentService;
 import com.meritcap.utils.ToMap;
 import jakarta.validation.Valid;
@@ -25,8 +27,11 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentService documentService;
-    public DocumentController(DocumentService documentService) {
+    private final AuthenticatedUserResolver authenticatedUserResolver;
+
+    public DocumentController(DocumentService documentService, AuthenticatedUserResolver authenticatedUserResolver) {
         this.documentService = documentService;
+        this.authenticatedUserResolver = authenticatedUserResolver;
     }
 
     @PreAuthorize("hasRole('STUDENT')")
@@ -47,6 +52,9 @@ public class DocumentController {
             DocumentResponseDto responseDto = documentService.uploadDocument(requestDto, file, uploadedBy);
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     new ApiSuccessResponse<>(responseDto, "Document uploaded successfully", 201));
+        } catch (CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
         } catch (Exception e) {
             log.error("Document upload failed", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
@@ -61,8 +69,17 @@ public class DocumentController {
             @RequestParam Long referenceId
     ) {
         try {
+            if (!authenticatedUserResolver.isCurrentUserAdmin()) {
+                if (!"STUDENT".equalsIgnoreCase(referenceType)) {
+                    throw new CustomException("You do not have permission to access this resource");
+                }
+                authenticatedUserResolver.assertCurrentStudentOwns(referenceId);
+            }
             List<DocumentResponseDto> docs = documentService.getDocuments(referenceType, referenceId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(docs, "Documents fetched successfully", 200));
+        } catch (CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
         } catch (Exception e) {
             log.error("Failed to list documents", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
@@ -76,6 +93,9 @@ public class DocumentController {
         try {
             documentService.deleteDocument(documentId, principal.getName());
             return ResponseEntity.ok(new ApiSuccessResponse<>(null, "Document deleted successfully", 200));
+        } catch (CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
         } catch (Exception e) {
             log.error("Failed to delete document", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(

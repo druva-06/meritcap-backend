@@ -95,17 +95,25 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
                         Jwt jwt = jwtDecoder.decode(token);
                         log.debug("JWT successfully decoded for request: {}", request.getRequestURI());
 
-                        // Validate token_use claim
+                        // Accept Cognito access tokens and ID tokens.
                         String tokenUse = jwt.getClaimAsString("token_use");
-                        if (!"access".equals(tokenUse)) {
+                        if (tokenUse != null && !"access".equals(tokenUse) && !"id".equals(tokenUse)) {
                             log.warn("Invalid token_use: {} for request {}", tokenUse, request.getRequestURI());
-                            throw new RuntimeException("Only access tokens are allowed");
+                            throw new RuntimeException("Unsupported token type");
                         }
 
                         String email = jwt.getClaimAsString("email");
                         String username = jwt.getClaimAsString("username");
                         String cognitoUsername = jwt.getClaimAsString("cognito:username");
-                        String principal = firstNonBlank(email, cognitoUsername, username);
+                        String preferredUsername = jwt.getClaimAsString("preferred_username");
+                        String principal = firstNonBlank(email, preferredUsername, cognitoUsername, username,
+                                jwt.getSubject());
+                        User localUser = resolveLocalUser(email, username, cognitoUsername, preferredUsername,
+                                principal);
+                        String effectivePrincipal = localUser != null && localUser.getEmail() != null
+                                && !localUser.getEmail().isBlank()
+                                        ? localUser.getEmail()
+                                        : principal;
 
                         // Extract Cognito groups and convert to ROLE_ authorities
                         List<String> groups = jwt.getClaimAsStringList("cognito:groups");
@@ -113,23 +121,6 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
                         List<GrantedAuthority> authorities;
                         if (groups == null || groups.isEmpty()) {
                             // Fallback to DB role to avoid accidental ROLE_USER downgrade.
-                            User localUser = null;
-                            if (email != null && !email.isBlank()) {
-                                localUser = userRepository.findByEmailIgnoreCase(email);
-                            }
-                            if (localUser == null && username != null && username.contains("@")) {
-                                localUser = userRepository.findByEmailIgnoreCase(username);
-                            }
-                            if (localUser == null && username != null && !username.isBlank()) {
-                                localUser = userRepository.findByUsername(username);
-                            }
-                            if (localUser == null && cognitoUsername != null && cognitoUsername.contains("@")) {
-                                localUser = userRepository.findByEmailIgnoreCase(cognitoUsername);
-                            }
-                            if (localUser == null && cognitoUsername != null && !cognitoUsername.isBlank()) {
-                                localUser = userRepository.findByUsername(cognitoUsername);
-                            }
-
                             if (localUser != null && localUser.getRole() != null && localUser.getRole().getName() != null) {
                                 String roleName = localUser.getRole().getName().toUpperCase();
                                 authorities = List.of(new SimpleGrantedAuthority("ROLE_" + roleName));
@@ -145,13 +136,13 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
                                     .collect(Collectors.toList());
                         }
 
-                        MDC.put("user", principal != null ? principal : "unknown");
+                        MDC.put("user", effectivePrincipal != null ? effectivePrincipal : "unknown");
 
-                        log.info("User {} authenticated with roles {}", principal, authorities);
+                        log.info("User {} authenticated with roles {}", effectivePrincipal, authorities);
 
                         // Set Spring Security context
                         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                principal, null, authorities);
+                                effectivePrincipal, null, authorities);
                         SecurityContextHolder.getContext().setAuthentication(authentication);
 
                     } catch (Exception ex) {
@@ -182,5 +173,44 @@ public class CognitoJwtAuthFilter extends OncePerRequestFilter {
             }
         }
         return null;
+    }
+
+    private User resolveLocalUser(String email, String username, String cognitoUsername, String preferredUsername,
+            String principal) {
+        User localUser = null;
+
+        if (email != null && !email.isBlank()) {
+            localUser = userRepository.findByEmailIgnoreCase(email);
+        }
+
+        if (localUser == null && preferredUsername != null && !preferredUsername.isBlank()) {
+            localUser = userRepository.findByUsernameIgnoreCase(preferredUsername);
+            if (localUser == null && preferredUsername.contains("@")) {
+                localUser = userRepository.findByEmailIgnoreCase(preferredUsername);
+            }
+        }
+
+        if (localUser == null && username != null && !username.isBlank()) {
+            localUser = userRepository.findByUsernameIgnoreCase(username);
+            if (localUser == null && username.contains("@")) {
+                localUser = userRepository.findByEmailIgnoreCase(username);
+            }
+        }
+
+        if (localUser == null && cognitoUsername != null && !cognitoUsername.isBlank()) {
+            localUser = userRepository.findByUsernameIgnoreCase(cognitoUsername);
+            if (localUser == null && cognitoUsername.contains("@")) {
+                localUser = userRepository.findByEmailIgnoreCase(cognitoUsername);
+            }
+        }
+
+        if (localUser == null && principal != null && !principal.isBlank()) {
+            localUser = userRepository.findByUsernameIgnoreCase(principal);
+            if (localUser == null && principal.contains("@")) {
+                localUser = userRepository.findByEmailIgnoreCase(principal);
+            }
+        }
+
+        return localUser;
     }
 }

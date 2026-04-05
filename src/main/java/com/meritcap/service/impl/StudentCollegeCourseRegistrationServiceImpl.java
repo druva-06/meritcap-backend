@@ -5,6 +5,7 @@ import com.meritcap.DTOs.requestDTOs.studentCollegeCourseRegistration.StudentCol
 import com.meritcap.DTOs.responseDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationResponseDto;
 import com.meritcap.enums.ApprovalStatus;
 import com.meritcap.exception.AlreadyExistException;
+import com.meritcap.exception.CustomException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.model.CollegeCourse;
 import com.meritcap.model.CollegeCourseSnapshot;
@@ -14,7 +15,6 @@ import com.meritcap.repository.CollegeCourseRepository;
 import com.meritcap.repository.CollegeCourseSnapshotRepository;
 import com.meritcap.repository.StudentCollegeCourseRegistrationRepository;
 import com.meritcap.repository.StudentRepository;
-import com.meritcap.service.DocumentService;
 import com.meritcap.service.StudentCollegeCourseRegistrationService;
 import com.meritcap.transformer.StudentCollegeCourseRegistrationTransformer;
 import lombok.extern.slf4j.Slf4j;
@@ -110,6 +110,13 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
     }
 
     @Override
+    public StudentCollegeCourseRegistrationResponseDto registerStudentForCourseForCurrentUser(
+            StudentCollegeCourseRegistrationRequestDto requestDto, Long currentUserId) {
+        assertStudentOwnership(requestDto.getStudentId(), currentUserId);
+        return registerStudentForCourse(requestDto);
+    }
+
+    @Override
     public StudentCollegeCourseRegistrationResponseDto editRegistration(StudentCollegeCourseRegistrationEditRequestDto requestDto) {
         log.info("Edit registration request received: registrationId={}, intakeSession={}",
                 requestDto.getRegistrationId(), requestDto.getIntakeSession());
@@ -138,6 +145,16 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
     }
 
     @Override
+    public StudentCollegeCourseRegistrationResponseDto editRegistrationForCurrentUser(
+            StudentCollegeCourseRegistrationEditRequestDto requestDto, Long currentUserId) {
+        StudentCollegeCourseRegistration registration = studentCollegeCourseRegistrationRepository
+                .findById(requestDto.getRegistrationId())
+                .orElseThrow(() -> new NotFoundException("Registration not found"));
+        assertRegistrationOwnership(registration, currentUserId);
+        return editRegistration(requestDto);
+    }
+
+    @Override
     public StudentCollegeCourseRegistrationResponseDto getRegistrationById(Long registrationId) {
         log.info("Service: Fetching registration by id={}", registrationId);
         StudentCollegeCourseRegistration reg = studentCollegeCourseRegistrationRepository.findById(registrationId)
@@ -152,6 +169,15 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
     }
 
     @Override
+    public StudentCollegeCourseRegistrationResponseDto getRegistrationByIdForCurrentUser(Long registrationId,
+            Long currentUserId) {
+        StudentCollegeCourseRegistration reg = studentCollegeCourseRegistrationRepository.findById(registrationId)
+                .orElseThrow(() -> new NotFoundException("Registration not found"));
+        assertRegistrationOwnership(reg, currentUserId);
+        return StudentCollegeCourseRegistrationTransformer.toResDto(reg);
+    }
+
+    @Override
     public List<StudentCollegeCourseRegistrationResponseDto> getRegistrationsByStudentId(Long studentId) {
         log.info("Service: Fetching all registrations for studentId={}", studentId);
         List<StudentCollegeCourseRegistration> regs = studentCollegeCourseRegistrationRepository.findAllByStudentId(studentId);
@@ -161,6 +187,13 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
         return regs.stream()
                 .map(StudentCollegeCourseRegistrationTransformer::toResDto)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<StudentCollegeCourseRegistrationResponseDto> getRegistrationsByStudentIdForCurrentUser(Long studentId,
+            Long currentUserId) {
+        assertStudentOwnership(studentId, currentUserId);
+        return getRegistrationsByStudentId(studentId);
     }
 
     @Override
@@ -204,6 +237,23 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
         }
         log.warn("No year found in intake session: {}", intakeSession);
         throw new IllegalArgumentException("No year found in intake session: " + intakeSession);
+    }
+
+    private void assertStudentOwnership(Long studentId, Long currentUserId) {
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new NotFoundException("Student not found"));
+        if (student.getUser() == null || student.getUser().getId() == null
+                || !student.getUser().getId().equals(currentUserId)) {
+            throw new CustomException("You do not have permission to access this resource");
+        }
+    }
+
+    private void assertRegistrationOwnership(StudentCollegeCourseRegistration registration, Long currentUserId) {
+        if (registration.getStudent() == null || registration.getStudent().getUser() == null
+                || registration.getStudent().getUser().getId() == null
+                || !registration.getStudent().getUser().getId().equals(currentUserId)) {
+            throw new CustomException("You do not have permission to access this resource");
+        }
     }
 
     private CollegeCourseSnapshot createSnapshotFromCourse(CollegeCourse course) {

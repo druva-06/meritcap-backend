@@ -5,9 +5,12 @@ import com.meritcap.model.User;
 import com.meritcap.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+
+import java.util.Locale;
 
 @Slf4j
 @Component
@@ -21,7 +24,8 @@ public class AuthenticatedUserResolver {
                 ? SecurityContextHolder.getContext().getAuthentication()
                 : null;
 
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
             throw new CustomException("Authentication required");
         }
 
@@ -40,13 +44,7 @@ public class AuthenticatedUserResolver {
             }
         }
 
-        User user = userRepository.findByEmailIgnoreCase(principal);
-        if (user == null) {
-            user = userRepository.findByUsername(principal);
-        }
-        if (user == null && principal.contains("@")) {
-            user = userRepository.findByEmail(principal.toLowerCase());
-        }
+        User user = resolveUserFromPrincipal(principal);
 
         if (user == null) {
             throw new CustomException("Authenticated user not found");
@@ -64,5 +62,42 @@ public class AuthenticatedUserResolver {
             log.warn("Forbidden user access. currentUserId={}, requestedUserId={}", currentUserId, requestedUserId);
             throw new CustomException("You do not have permission to access this resource");
         }
+    }
+
+    public Long resolveCurrentStudentId() {
+        User user = resolveCurrentUser();
+        if (user.getStudent() == null || user.getStudent().getId() == null) {
+            throw new CustomException("Authenticated student not found");
+        }
+        return user.getStudent().getId();
+    }
+
+    public void assertCurrentStudentOwns(Long requestedStudentId) {
+        Long currentStudentId = resolveCurrentStudentId();
+        if (!currentStudentId.equals(requestedStudentId)) {
+            log.warn("Forbidden student access. currentStudentId={}, requestedStudentId={}", currentStudentId,
+                    requestedStudentId);
+            throw new CustomException("You do not have permission to access this resource");
+        }
+    }
+
+    public boolean isCurrentUserAdmin() {
+        User user = resolveCurrentUser();
+        return user.getRole() != null && user.getRole().getName() != null
+                && "ADMIN".equalsIgnoreCase(user.getRole().getName());
+    }
+
+    private User resolveUserFromPrincipal(String principal) {
+        User user = null;
+        if (principal.contains("@")) {
+            user = userRepository.findByEmailIgnoreCase(principal);
+        }
+        if (user == null) {
+            user = userRepository.findByUsernameIgnoreCase(principal);
+        }
+        if (user == null && principal.contains("@")) {
+            user = userRepository.findByEmail(principal.toLowerCase(Locale.ROOT));
+        }
+        return user;
     }
 }
