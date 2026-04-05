@@ -34,15 +34,19 @@ public class StudentEducationController {
 
     @PostMapping("/add")
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<?> addStudentEducation(@RequestBody @Valid StudentEducationRequestDto dto, BindingResult bindingResult, @RequestParam Long userId) {
+    public ResponseEntity<?> addStudentEducation(@RequestBody @Valid StudentEducationRequestDto dto,
+            BindingResult bindingResult, @RequestParam(required = false) Long userId) {
         log.info("Add student education request received: userId={}, payload={}", userId, dto);
         if (bindingResult.hasErrors()) {
             log.error("Validation errors in addStudentEducation: {}", bindingResult.getAllErrors());
             return ResponseEntity.badRequest().body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
-            authenticatedUserResolver.assertCurrentUserOwns(userId);
-            StudentEducationResponseDto response = studentEducationService.addStudentEducation(dto, userId);
+            Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+            if (userId != null && !currentUserId.equals(userId)) {
+                log.warn("Ignoring mismatched add-education userId {} for authenticated user {}", userId, currentUserId);
+            }
+            StudentEducationResponseDto response = studentEducationService.addStudentEducation(dto, currentUserId);
             return ResponseEntity.status(HttpStatus.CREATED).body(new ApiSuccessResponse<>(response, "Student education added successfully", 201));
         } catch (com.meritcap.exception.CustomException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
@@ -88,11 +92,14 @@ public class StudentEducationController {
 
     @GetMapping("/get")
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<?> getStudentEducation(@RequestParam Long userId) {
+    public ResponseEntity<?> getStudentEducation(@RequestParam(required = false) Long userId) {
         log.info("Get student education request: userId={}", userId);
         try {
-            authenticatedUserResolver.assertCurrentUserOwns(userId);
-            List<StudentEducationResponseDto> result = studentEducationService.getStudentEducation(userId);
+            Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+            if (userId != null && !currentUserId.equals(userId)) {
+                log.warn("Ignoring mismatched get-education userId {} for authenticated user {}", userId, currentUserId);
+            }
+            List<StudentEducationResponseDto> result = studentEducationService.getStudentEducation(currentUserId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(result, "Student education fetched successfully", 200));
         } catch (com.meritcap.exception.CustomException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));

@@ -42,7 +42,12 @@ public class StudentController {
                     .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
-            authenticatedUserResolver.assertCurrentUserOwns(requestDto.getUserId());
+            Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+            if (requestDto.getUserId() != null && !currentUserId.equals(requestDto.getUserId())) {
+                log.warn("Ignoring mismatched add-profile userId {} for authenticated user {}", requestDto.getUserId(),
+                        currentUserId);
+            }
+            requestDto.setUserId(currentUserId);
             StudentProfileResponseDto responseDto = studentProfileService.addProfile(requestDto);
             log.info("Profile added for userId: {}", responseDto.getUserId());
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -61,11 +66,14 @@ public class StudentController {
     // Get Own Profile (Student Self)
     @GetMapping
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<?> getOwnProfile(@RequestParam Long userId) {
+    public ResponseEntity<?> getOwnProfile(@RequestParam(required = false) Long userId) {
         log.info("Get own profile request for userId: {}", userId);
         try {
-            authenticatedUserResolver.assertCurrentUserOwns(userId);
-            StudentProfileResponseDto responseDto = studentProfileService.getProfileByUserId(userId);
+            Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+            if (userId != null && !currentUserId.equals(userId)) {
+                log.warn("Ignoring mismatched profile userId {} for authenticated user {}", userId, currentUserId);
+            }
+            StudentProfileResponseDto responseDto = studentProfileService.getProfileByUserId(currentUserId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(responseDto, "Profile fetched successfully", 200));
         } catch (NotFoundException e) {
             log.warn("Profile not found for userId: {}", userId);
@@ -87,7 +95,8 @@ public class StudentController {
     // Update Own Profile (Student Self)
     @PutMapping
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<?> updateProfile(@RequestBody @Valid StudentProfileUpdateRequestDto requestDto, BindingResult bindingResult, @RequestParam Long userId) {
+    public ResponseEntity<?> updateProfile(@RequestBody @Valid StudentProfileUpdateRequestDto requestDto,
+            BindingResult bindingResult, @RequestParam(required = false) Long userId) {
         log.info("Update profile request for userId: {}, data: {}", userId, requestDto);
         if (bindingResult.hasErrors()) {
             log.error("Validation errors in update profile: {}", bindingResult.getAllErrors());
@@ -95,9 +104,13 @@ public class StudentController {
                     .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
-            authenticatedUserResolver.assertCurrentUserOwns(userId);
-            StudentProfileResponseDto responseDto = studentProfileService.updateProfile(userId, requestDto);
-            log.info("Profile updated for userId: {}", userId);
+            Long currentUserId = authenticatedUserResolver.resolveCurrentUserId();
+            if (userId != null && !currentUserId.equals(userId)) {
+                log.warn("Ignoring mismatched update-profile userId {} for authenticated user {}", userId,
+                        currentUserId);
+            }
+            StudentProfileResponseDto responseDto = studentProfileService.updateProfile(currentUserId, requestDto);
+            log.info("Profile updated for userId: {}", currentUserId);
             return ResponseEntity.ok(new ApiSuccessResponse<>(responseDto, "Profile updated successfully", 200));
         } catch (ValidationException e) {
             log.warn("Validation failed in update: {}", e.getMessage());
