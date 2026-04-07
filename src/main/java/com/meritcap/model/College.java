@@ -135,6 +135,10 @@ public class College {
         String faqsUniversity;
 
         // ---------- Relations ----------
+        @ManyToOne(fetch = FetchType.LAZY)
+        @JoinColumn(name = "country_id")
+        Country countryEntity;
+
         @OneToOne(fetch = FetchType.LAZY, optional = true, cascade = { CascadeType.PERSIST, CascadeType.MERGE })
         @JoinColumn(name = "seo_id", referencedColumnName = "id", unique = true)
         @ToString.Exclude

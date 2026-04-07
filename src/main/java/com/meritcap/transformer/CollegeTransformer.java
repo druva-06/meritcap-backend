@@ -29,7 +29,8 @@ public class CollegeTransformer {
     public static CollegeResponseDto toResDTO(College c) {
         return new CollegeResponseDto(
                 c.getId(), c.getSlug(), c.getName(), c.getCampusName(), c.getCampusCode(),
-                c.getCountry(), c.getEstablishedYear(), c.getRanking(), c.getDescription(),
+                c.getCountry(), c.getCountryEntity() != null ? c.getCountryEntity().getId() : null,
+                c.getEstablishedYear(), c.getRanking(), c.getDescription(),
                 c.getWebsiteUrl(), c.getCollegeLogo(), c.getCampusGalleryVideoLink(), c.getBannerUrl(),
                 c.getStatus(), c.getCreatedAt(), c.getUpdatedAt(), c.getCreatedBy(), c.getUpdatedBy(),
                 c.getFaqsUniversity());

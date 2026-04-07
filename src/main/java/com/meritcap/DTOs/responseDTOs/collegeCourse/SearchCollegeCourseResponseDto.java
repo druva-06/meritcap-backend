@@ -17,6 +17,7 @@ public class SearchCollegeCourseResponseDto {
     String campusCode;
     String campusName;
     String country;
+    Long countryId;
     String graduationLevel;
     String collegeImage;
     Integer intakeYear;

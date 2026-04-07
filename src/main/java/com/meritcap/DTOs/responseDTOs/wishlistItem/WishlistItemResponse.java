@@ -26,6 +26,7 @@ public class WishlistItemResponse {
     private String courseName;
     private String campusName;
     private String tuitionFee;
+    private Long countryId;
     List<Month> intakeMonths;
     // Optionally: add college/course details for richer UI later
 }

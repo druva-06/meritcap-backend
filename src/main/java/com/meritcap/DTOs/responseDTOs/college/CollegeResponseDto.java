@@ -15,6 +15,7 @@ public class CollegeResponseDto {
     private String campusName;
     private String campusCode;
     private String country;
+    private Long countryId;
     private Integer establishedYear;
     private String ranking;
     private String description;

@@ -74,6 +74,7 @@ public class CollegeCourseRepositoryCustomImpl implements CollegeCourseRepositor
                 "clg.campus_code AS campusCode, " +
                 "clg.campus_name AS campusName, " +
                 "clg.country AS country, " +
+                "clg.country_id AS countryId, " +
                 "crs.graduation_level AS graduationLevel, " +
                 "clg.college_logo AS collegeImage, " +
                 "cc.intake_year AS intakeYear, " +
@@ -91,7 +92,7 @@ public class CollegeCourseRepositoryCustomImpl implements CollegeCourseRepositor
         addFilterConditions(queryStr, searchCourseRequestDto);
 
         // ➡️ Add group by after filters
-        queryStr.append(" GROUP BY cc.id, clg.name, crs.name, clg.campus_code, clg.campus_name, clg.country, " +
+        queryStr.append(" GROUP BY cc.id, clg.name, crs.name, clg.campus_code, clg.campus_name, clg.country, clg.country_id, " +
                 "crs.graduation_level, clg.college_logo, cc.intake_year, cc.tuition_fee, clg.established_year ");
 
         // Add pagination if available

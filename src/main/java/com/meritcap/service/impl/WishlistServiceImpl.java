@@ -70,6 +70,7 @@ public class WishlistServiceImpl implements WishlistService {
                 .wishlistItemId(item.getId())
                 .collegeCourseId(course.getId())
                 .studentId(student.getId())
+                .countryId(course.getCollege().getCountryEntity() != null ? course.getCollege().getCountryEntity().getId() : null)
                 .build();
     }
 
@@ -101,6 +102,7 @@ public class WishlistServiceImpl implements WishlistService {
                         .campusName(item.getCollegeCourse().getCollege().getCampusName())
                         .courseName(item.getCollegeCourse().getCourse().getName())
                         .tuitionFee(item.getCollegeCourse().getTuitionFee())
+                        .countryId(item.getCollegeCourse().getCollege().getCountryEntity() != null ? item.getCollegeCourse().getCollege().getCountryEntity().getId() : null)
                         .studentId(studentId)
                         .build()
         ).collect(Collectors.toList());

@@ -2,19 +2,24 @@ package com.meritcap.service.impl;
 
 import com.meritcap.DTOs.requestDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationEditRequestDto;
 import com.meritcap.DTOs.requestDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationRequestDto;
+import com.meritcap.DTOs.responseDTOs.documentconfig.DocumentComplianceResponseDto;
 import com.meritcap.DTOs.responseDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationResponseDto;
 import com.meritcap.enums.ApprovalStatus;
 import com.meritcap.exception.AlreadyExistException;
 import com.meritcap.exception.CustomException;
+import com.meritcap.exception.DocumentComplianceException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.model.CollegeCourse;
 import com.meritcap.model.CollegeCourseSnapshot;
+import com.meritcap.model.Country;
 import com.meritcap.model.Student;
 import com.meritcap.model.StudentCollegeCourseRegistration;
 import com.meritcap.repository.CollegeCourseRepository;
 import com.meritcap.repository.CollegeCourseSnapshotRepository;
+import com.meritcap.repository.CountryRepository;
 import com.meritcap.repository.StudentCollegeCourseRegistrationRepository;
 import com.meritcap.repository.StudentRepository;
+import com.meritcap.service.DocumentConfigService;
 import com.meritcap.service.StudentCollegeCourseRegistrationService;
 import com.meritcap.transformer.StudentCollegeCourseRegistrationTransformer;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +28,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,14 +39,21 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
     private final StudentRepository studentRepository;
     private final CollegeCourseRepository collegeCourseRepository;
     private final CollegeCourseSnapshotRepository collegeCourseSnapshotRepository;
+    private final DocumentConfigService documentConfigService;
+    private final CountryRepository countryRepository;
 
     StudentCollegeCourseRegistrationServiceImpl(StudentCollegeCourseRegistrationRepository studentCollegeCourseRegistrationRepository,
                                                 StudentRepository studentRepository,
-                                                CollegeCourseRepository collegeCourseRepository, CollegeCourseSnapshotRepository collegeCourseSnapshotRepository) {
+                                                CollegeCourseRepository collegeCourseRepository,
+                                                CollegeCourseSnapshotRepository collegeCourseSnapshotRepository,
+                                                DocumentConfigService documentConfigService,
+                                                CountryRepository countryRepository) {
         this.studentCollegeCourseRegistrationRepository = studentCollegeCourseRegistrationRepository;
         this.studentRepository = studentRepository;
         this.collegeCourseRepository = collegeCourseRepository;
         this.collegeCourseSnapshotRepository = collegeCourseSnapshotRepository;
+        this.documentConfigService = documentConfigService;
+        this.countryRepository = countryRepository;
     }
 
     @Override
@@ -65,6 +78,18 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
                     log.warn("College course not found: {}", requestDto.getCollegeCourseId());
                     return new NotFoundException("College course not found");
                 });
+
+        // Document compliance check
+        Long countryId = resolveCountryId(course);
+        if (countryId != null) {
+            DocumentComplianceResponseDto compliance =
+                    documentConfigService.checkCountryDocumentCompliance(requestDto.getStudentId(), countryId);
+            if (!Boolean.TRUE.equals(compliance.getCompliant())) {
+                log.warn("Document compliance check failed for studentId={}, countryId={}, missing={}",
+                        requestDto.getStudentId(), countryId, compliance.getMissingDocuments().size());
+                throw new DocumentComplianceException(compliance.getMissingDocuments());
+            }
+        }
 
         CollegeCourseSnapshot snapshot = createSnapshotFromCourse(course);
         collegeCourseSnapshotRepository.save(snapshot);
@@ -254,6 +279,29 @@ public class StudentCollegeCourseRegistrationServiceImpl implements StudentColle
                 || !registration.getStudent().getUser().getId().equals(currentUserId)) {
             throw new CustomException("You do not have permission to access this resource");
         }
+    }
+
+    /**
+     * Resolves the country ID from a CollegeCourse.
+     * First tries the countryEntity FK on College, then falls back to the country name string.
+     */
+    private Long resolveCountryId(CollegeCourse course) {
+        if (course.getCollege() == null) return null;
+
+        // Prefer FK if already populated
+        if (course.getCollege().getCountryEntity() != null) {
+            return course.getCollege().getCountryEntity().getId();
+        }
+
+        // Fall back to name-based lookup
+        String countryName = course.getCollege().getCountry();
+        if (countryName == null || countryName.isBlank()) return null;
+
+        Optional<Country> country = countryRepository.findByNameIgnoreCase(countryName.trim());
+        if (country.isEmpty()) {
+            log.warn("Country '{}' not found in countries table; skipping document compliance check", countryName);
+        }
+        return country.map(Country::getId).orElse(null);
     }
 
     private CollegeCourseSnapshot createSnapshotFromCourse(CollegeCourse course) {

@@ -5,6 +5,7 @@ import com.meritcap.DTOs.requestDTOs.studentCollegeCourseRegistration.StudentCol
 import com.meritcap.DTOs.responseDTOs.studentCollegeCourseRegistration.StudentCollegeCourseRegistrationResponseDto;
 import com.meritcap.exception.AlreadyExistException;
 import com.meritcap.exception.CustomException;
+import com.meritcap.exception.DocumentComplianceException;
 import com.meritcap.exception.NotFoundException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
@@ -43,6 +44,11 @@ public class StudentCollegeCourseRegistrationController {
                     .registerStudentForCourseForCurrentUser(request, authenticatedUserResolver.resolveCurrentUserId());
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(new ApiSuccessResponse<>(response, "Registration created", 201));
+        } catch (DocumentComplianceException e) {
+            log.warn("Registration blocked - missing documents for studentId={}: {}",
+                    request.getStudentId(), e.getMissingDocuments());
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(new ApiFailureResponse<>(e.getMissingDocuments(), "Missing required documents", 422));
         } catch (AlreadyExistException e) {
             log.warn("Duplicate registration: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.CONFLICT)
