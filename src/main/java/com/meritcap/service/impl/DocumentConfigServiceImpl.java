@@ -43,6 +43,21 @@ public class DocumentConfigServiceImpl implements DocumentConfigService {
 
     @Override
     public DocumentTypeResponseDto createDocumentType(DocumentTypeRequestDto requestDto) {
+        // Check if a soft-deleted record exists and restore it
+        Optional<DocumentTypeEntity> deletedDocType = documentTypeEntityRepository.findDeletedByCodeIgnoreCase(requestDto.getCode());
+        if (deletedDocType.isPresent()) {
+            DocumentTypeEntity entity = deletedDocType.get();
+            entity.setIsDeleted(false);
+            entity.setName(requestDto.getName());
+            entity.setDescription(requestDto.getDescription());
+            if (requestDto.getCategory() != null) entity.setCategory(requestDto.getCategory());
+            if (requestDto.getAllowMultiple() != null) entity.setAllowMultiple(requestDto.getAllowMultiple());
+            if (requestDto.getIsActive() != null) entity.setIsActive(requestDto.getIsActive());
+            entity = documentTypeEntityRepository.save(entity);
+            log.info("Restored soft-deleted document type id={}, code={}", entity.getId(), entity.getCode());
+            return toDocumentTypeDto(entity);
+        }
+
         if (documentTypeEntityRepository.existsByCodeIgnoreCase(requestDto.getCode())) {
             throw new AlreadyExistException(Collections.singletonList(
                     "Document type with code '" + requestDto.getCode() + "' already exists"));
@@ -103,6 +118,20 @@ public class DocumentConfigServiceImpl implements DocumentConfigService {
 
     @Override
     public ProfileDocumentRequirementResponseDto createProfileRequirement(ProfileDocumentRequirementRequestDto requestDto) {
+        // Check if a soft-deleted record exists and restore it
+        Optional<ProfileDocumentRequirement> deletedReq = profileDocumentRequirementRepository
+                .findDeletedByDocumentTypeId(requestDto.getDocumentTypeId());
+        if (deletedReq.isPresent()) {
+            ProfileDocumentRequirement req = deletedReq.get();
+            req.setIsDeleted(false);
+            req.setIsRequired(requestDto.getIsRequired() != null ? requestDto.getIsRequired() : true);
+            req.setMinCount(requestDto.getMinCount() != null ? requestDto.getMinCount() : 1);
+            req.setDisplayOrder(requestDto.getDisplayOrder() != null ? requestDto.getDisplayOrder() : 0);
+            req = profileDocumentRequirementRepository.save(req);
+            log.info("Restored soft-deleted profile document requirement id={}", req.getId());
+            return toProfileReqDto(req);
+        }
+
         if (profileDocumentRequirementRepository.existsByDocumentTypeId(requestDto.getDocumentTypeId())) {
             throw new AlreadyExistException(Collections.singletonList(
                     "Profile requirement for this document type already exists"));
@@ -166,6 +195,20 @@ public class DocumentConfigServiceImpl implements DocumentConfigService {
 
     @Override
     public CountryDocumentRequirementResponseDto createCountryRequirement(CountryDocumentRequirementRequestDto requestDto) {
+        // Check if a soft-deleted record exists and restore it
+        Optional<CountryDocumentRequirement> deletedReq = countryDocumentRequirementRepository
+                .findDeletedByCountryIdAndDocumentTypeId(requestDto.getCountryId(), requestDto.getDocumentTypeId());
+        if (deletedReq.isPresent()) {
+            CountryDocumentRequirement req = deletedReq.get();
+            req.setIsDeleted(false);
+            req.setIsRequired(requestDto.getIsRequired() != null ? requestDto.getIsRequired() : true);
+            req.setMinCount(requestDto.getMinCount() != null ? requestDto.getMinCount() : 1);
+            req.setDisplayOrder(requestDto.getDisplayOrder() != null ? requestDto.getDisplayOrder() : 0);
+            req = countryDocumentRequirementRepository.save(req);
+            log.info("Restored soft-deleted country doc requirement id={} for countryId={}", req.getId(), requestDto.getCountryId());
+            return toCountryReqDto(req);
+        }
+
         if (countryDocumentRequirementRepository.existsByCountryIdAndDocumentTypeId(
                 requestDto.getCountryId(), requestDto.getDocumentTypeId())) {
             throw new AlreadyExistException(Collections.singletonList(

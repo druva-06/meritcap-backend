@@ -17,4 +17,20 @@ public interface CountryDocumentRequirementRepository extends JpaRepository<Coun
     @Modifying
     @Query("UPDATE CountryDocumentRequirement r SET r.isDeleted = true WHERE r.country.id = :countryId")
     void softDeleteAllByCountryId(@Param("countryId") Long countryId);
+
+    /**
+     * Find a soft-deleted record by country and document type.
+     * Bypasses the @Where(clause = "is_deleted = false") filter.
+     */
+    @Query(value = "SELECT * FROM country_document_requirements WHERE country_id = :countryId AND document_type_id = :documentTypeId AND is_deleted = true", nativeQuery = true)
+    Optional<CountryDocumentRequirement> findDeletedByCountryIdAndDocumentTypeId(
+            @Param("countryId") Long countryId,
+            @Param("documentTypeId") Long documentTypeId);
+
+    /**
+     * Restore a soft-deleted record by setting is_deleted = false.
+     */
+    @Modifying
+    @Query(value = "UPDATE country_document_requirements SET is_deleted = false WHERE id = :id", nativeQuery = true)
+    void restoreById(@Param("id") Long id);
 }
