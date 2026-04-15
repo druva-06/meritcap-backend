@@ -3,6 +3,8 @@ package com.meritcap.controller;
 import com.meritcap.DTOs.requestDTOs.document.DocumentUploadRequestDto;
 import com.meritcap.DTOs.responseDTOs.document.DocumentResponseDto;
 import com.meritcap.exception.CustomException;
+import com.meritcap.exception.NotFoundException;
+import com.meritcap.exception.ValidationException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
 import com.meritcap.security.AuthenticatedUserResolver;
@@ -84,6 +86,51 @@ public class DocumentController {
             log.error("Failed to list documents", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'COUNSELOR')")
+    @PutMapping("/admin/{documentId}/status")
+    public ResponseEntity<?> updateDocumentStatus(
+            @PathVariable Long documentId,
+            @RequestParam String status,
+            @RequestParam(required = false) String remarks
+    ) {
+        log.info("Admin: Update document status - documentId={}, status={}", documentId, status);
+        try {
+            DocumentResponseDto responseDto = documentService.updateDocumentStatus(documentId, status, remarks);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(responseDto, "Document status updated successfully", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (ValidationException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                    new ApiFailureResponse<>(e.getErrors(), e.getMessage(), 400));
+        } catch (Exception e) {
+            log.error("Failed to update document status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN', 'COUNSELOR')")
+    @GetMapping("/{documentId}/presigned-url")
+    public ResponseEntity<?> getPresignedUrl(@PathVariable Long documentId, Principal principal) {
+        log.info("Presigned URL requested for documentId={}, by={}", documentId, principal != null ? principal.getName() : "unknown");
+        try {
+            String presignedUrl = documentService.generatePresignedUrl(documentId,
+                    principal != null ? principal.getName() : null);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(presignedUrl, "Presigned URL generated", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (CustomException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 403));
+        } catch (Exception e) {
+            log.error("Failed to generate presigned URL for documentId={}", documentId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    new ApiFailureResponse<>(new ArrayList<>(), "Failed to generate URL", 500));
         }
     }
 

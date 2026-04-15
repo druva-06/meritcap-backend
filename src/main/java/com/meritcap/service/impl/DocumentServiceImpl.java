@@ -26,12 +26,16 @@ import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminUpdate
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AttributeType;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import jakarta.annotation.PostConstruct;
 
 import java.io.InputStream;
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -44,6 +48,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final UserRepository userRepository;
     private final CognitoIdentityProviderClient cognitoClient;
     private S3Client s3Client;
+    private S3Presigner s3Presigner;
 
     @Value("${aws.s3.bucketName}")
     private String bucketName;
@@ -73,11 +78,16 @@ public class DocumentServiceImpl implements DocumentService {
 
     @PostConstruct
     public void initS3Client() {
+        StaticCredentialsProvider credentials = StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(accessKeyId, secretAccessKey)
+        );
         this.s3Client = S3Client.builder()
                 .region(Region.AP_SOUTH_2)
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKeyId, secretAccessKey)
-                ))
+                .credentialsProvider(credentials)
+                .build();
+        this.s3Presigner = S3Presigner.builder()
+                .region(Region.AP_SOUTH_2)
+                .credentialsProvider(credentials)
                 .build();
     }
 
@@ -569,6 +579,91 @@ public class DocumentServiceImpl implements DocumentService {
             user = userRepository.findByEmail(principal.toLowerCase(Locale.ROOT));
         }
         return user;
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponseDto updateDocumentStatus(Long documentId, String status, String reviewerRemarks) {
+        log.info("Admin: Update document status - documentId={}, newStatus={}", documentId, status);
+
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + documentId));
+
+        if (Boolean.TRUE.equals(doc.getIsDeleted())) {
+            throw new NotFoundException("Document not found with id: " + documentId);
+        }
+
+        DocumentStatus newStatus;
+        try {
+            newStatus = DocumentStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException(Collections.singletonList("Invalid status. Allowed values: PENDING, VERIFIED"));
+        }
+
+        doc.setDocumentStatus(newStatus);
+        if (reviewerRemarks != null && !reviewerRemarks.isBlank()) {
+            doc.setRemarks(reviewerRemarks);
+        }
+        documentRepository.save(doc);
+        log.info("Admin: Document id={} status updated to {}", documentId, newStatus);
+
+        return DocumentResponseDto.builder()
+                .id(doc.getId())
+                .referenceType(doc.getReferenceType())
+                .referenceId(doc.getReferenceId())
+                .documentType(doc.getDocumentType())
+                .category(doc.getCategory())
+                .remarks(doc.getRemarks())
+                .documentStatus(doc.getDocumentStatus().toString())
+                .fileUrl(doc.getFileUrl())
+                .uploadedBy(doc.getUploadedBy())
+                .uploadedAt(doc.getUploadedAt())
+                .build();
+    }
+
+    @Override
+    public String generatePresignedUrl(Long documentId, String requestedByPrincipal) {
+        log.info("Generating presigned URL for documentId={}, requestedBy={}", documentId, requestedByPrincipal);
+
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new NotFoundException("Document not found with id: " + documentId));
+
+        if (Boolean.TRUE.equals(doc.getIsDeleted())) {
+            throw new NotFoundException("Document not found with id: " + documentId);
+        }
+
+        // Non-admin users can only access their own student documents
+        if (requestedByPrincipal != null) {
+            User requester = resolveUserByPrincipal(requestedByPrincipal);
+            if (requester != null && !isAdmin(requester)) {
+                if (!"STUDENT".equalsIgnoreCase(doc.getReferenceType())
+                        || requester.getStudent() == null
+                        || requester.getStudent().getId() == null
+                        || !requester.getStudent().getId().equals(doc.getReferenceId())) {
+                    throw new CustomException("You do not have permission to access this document");
+                }
+            }
+        }
+
+        String fileKey = extractKeyFromS3Url(doc.getFileUrl());
+        if (fileKey == null || fileKey.isBlank()) {
+            log.error("Could not extract S3 key from fileUrl={}", doc.getFileUrl());
+            throw new RuntimeException("Unable to generate presigned URL: invalid stored file URL");
+        }
+
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(fileKey)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(15))
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        String presignedUrl = s3Presigner.presignGetObject(presignRequest).url().toExternalForm();
+        log.info("Presigned URL generated for documentId={}, key={}", documentId, fileKey);
+        return presignedUrl;
     }
 
     private boolean isAdmin(User user) {

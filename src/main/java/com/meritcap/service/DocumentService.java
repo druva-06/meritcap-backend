@@ -11,4 +11,6 @@ public interface DocumentService {
     List<DocumentResponseDto> getDocuments(String referenceType, Long referenceId);
     void deleteDocument(Long documentId, String requestedBy);
     DocumentResponseDto uploadProfileImage(MultipartFile file, String uploadedBy);
+    DocumentResponseDto updateDocumentStatus(Long documentId, String status, String reviewerRemarks);
+    String generatePresignedUrl(Long documentId, String requestedByPrincipal);
 }
