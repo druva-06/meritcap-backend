@@ -66,7 +66,7 @@ springdoc:
     enabled: false
 
 cors:
-  allowed-origins: https://meritcap.com,https://www.meritcap.com,https://admin.meritcap.com,https://api.meritcap.com,http://localhost:3000,http://localhost:3002
+  allowed-origins: https://meritcap.com,https://www.meritcap.com,https://admin.meritcap.com,https://api.meritcap.com,http://localhost:3000,http://localhost:3001,http://localhost:3002
 
 logging:
   level:
