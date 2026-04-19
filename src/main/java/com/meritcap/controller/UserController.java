@@ -1,6 +1,7 @@
 package com.meritcap.controller;
 
 import com.meritcap.DTOs.requestDTOs.user.UserRequestDto;
+import com.meritcap.DTOs.responseDTOs.invitation.InvitationResponseDto;
 import com.meritcap.DTOs.responseDTOs.user.CounselorDto;
 import com.meritcap.DTOs.responseDTOs.user.PagedUserResponseDto;
 import com.meritcap.DTOs.responseDTOs.user.UserResponseDto;
@@ -46,7 +47,7 @@ public class UserController {
                     .body(new ApiFailureResponse<>(ToMap.bindingResultToMap(bindingResult), "Validation failed", 400));
         }
         try {
-            UserResponseDto responseDto = userService.addUser(userRequestDto);
+            InvitationResponseDto responseDto = userService.addUser(userRequestDto);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(new ApiSuccessResponse<>(responseDto,
                             "Invitation sent successfully. User will receive signup link via email.", 201));

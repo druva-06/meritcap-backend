@@ -20,6 +20,7 @@ import com.meritcap.repository.InvitedUserRepository;
 import com.meritcap.repository.LeadRepository;
 import com.meritcap.repository.ScholarshipRepository;
 import com.meritcap.repository.StudentCollegeCourseRegistrationRepository;
+import com.meritcap.security.AuthenticatedUserResolver;
 import com.meritcap.service.CognitoService;
 import com.meritcap.service.InvitationService;
 import com.meritcap.service.UserService;
@@ -61,6 +62,7 @@ public class UserServiceImpl implements UserService {
     private final RoleRepository roleRepository;
     private final InvitationService invitationService;
     private final CognitoService cognitoService;
+    private final AuthenticatedUserResolver authenticatedUserResolver;
     private final DocumentRepository documentRepository;
     private final EmailOTPRepository emailOTPRepository;
     private final InvitedUserRepository invitedUserRepository;
@@ -83,7 +85,8 @@ public class UserServiceImpl implements UserService {
             DocumentRepository documentRepository, EmailOTPRepository emailOTPRepository,
             InvitedUserRepository invitedUserRepository, LeadRepository leadRepository,
             ScholarshipRepository scholarshipRepository,
-            StudentCollegeCourseRegistrationRepository studentCollegeCourseRegistrationRepository) {
+            StudentCollegeCourseRegistrationRepository studentCollegeCourseRegistrationRepository,
+            AuthenticatedUserResolver authenticatedUserResolver) {
         this.userRepository = userRepository;
         this.studentRepository = studentRepository;
         this.roleRepository = roleRepository;
@@ -95,6 +98,7 @@ public class UserServiceImpl implements UserService {
         this.leadRepository = leadRepository;
         this.scholarshipRepository = scholarshipRepository;
         this.studentCollegeCourseRegistrationRepository = studentCollegeCourseRegistrationRepository;
+        this.authenticatedUserResolver = authenticatedUserResolver;
     }
 
     @PostConstruct
@@ -107,7 +111,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Transactional
-    public UserResponseDto addUser(UserRequestDto userRequestDto) {
+    public InvitationResponseDto addUser(UserRequestDto userRequestDto) {
         log.info("Creating user invitation for email: {}", userRequestDto.getEmail());
 
         // Check if user already exists
@@ -134,23 +138,13 @@ public class UserServiceImpl implements UserService {
                 .expiryDays(7) // Default 7 days expiry
                 .build();
 
-        // Create invitation using InvitationService
-        // TODO: Get actual logged-in user ID from security context
-        Long invitedByUserId = 1L; // Placeholder - should be extracted from authentication
+        Long invitedByUserId = authenticatedUserResolver.resolveCurrentUserId();
 
         InvitationResponseDto invitation = invitationService.createInvitation(invitationRequest, invitedByUserId);
 
         log.info("Invitation created successfully. User will receive signup link via email.");
 
-        // Return a response indicating invitation was sent
-        // Note: User is not actually created yet, will be created when they sign up
-        return UserResponseDto.builder()
-                .email(userRequestDto.getEmail())
-                .firstName(firstName)
-                .lastName(lastName)
-                .phoneNumber(userRequestDto.getPhoneNumber())
-                .role(userRequestDto.getRoleName())
-                .build();
+        return invitation;
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.meritcap.service;
 
 import com.meritcap.DTOs.requestDTOs.user.UserRequestDto;
+import com.meritcap.DTOs.responseDTOs.invitation.InvitationResponseDto;
 import com.meritcap.DTOs.responseDTOs.user.CounselorDto;
 import com.meritcap.DTOs.responseDTOs.user.PagedUserResponseDto;
 import com.meritcap.DTOs.responseDTOs.user.UserResponseDto;
@@ -11,7 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 public interface UserService {
-    UserResponseDto addUser(UserRequestDto userRequestDto);
+    InvitationResponseDto addUser(UserRequestDto userRequestDto);
 
     UserResponseDto updateUser(UserRequestDto userRequestDto, Long userId);
 
