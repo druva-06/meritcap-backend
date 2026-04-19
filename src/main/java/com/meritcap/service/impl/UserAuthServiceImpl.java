@@ -26,12 +26,15 @@ import com.meritcap.repository.RoleRepository;
 import com.meritcap.repository.UserRepository;
 import com.meritcap.service.EmailService;
 import com.meritcap.service.PermissionService;
+import com.meritcap.service.RoundRobinService;
 import com.meritcap.service.UserAuthService;
 import com.meritcap.transformer.UserAuthTransformer;
 import com.meritcap.transformer.UserTransformer;
 import com.meritcap.utils.CognitoUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +60,10 @@ public class UserAuthServiceImpl implements UserAuthService {
     private final EmailService emailService;
     private final CognitoIdentityProviderClient cognitoClient;
     private final PermissionService permissionService;
+
+    @Lazy
+    @Autowired
+    private RoundRobinService roundRobinService;
 
     @Value("${aws.cognito.userPoolId}")
     private String userPoolId;
@@ -185,8 +192,16 @@ public class UserAuthServiceImpl implements UserAuthService {
                 log.info("Student record created for user: {}", email);
             }
 
-            userRepository.save(user);
+            User savedUser = userRepository.save(user);
             log.info("User {} saved in local database", email);
+
+            if ("STUDENT".equalsIgnoreCase(userAuthSignUpRequestDto.getRole())) {
+                try {
+                    roundRobinService.autoAssignNewStudentLead(savedUser);
+                } catch (Exception e) {
+                    log.warn("Auto-assign lead failed for new student {}: {}", email, e.getMessage());
+                }
+            }
 
             return "User Registered Successfully!";
 
@@ -893,6 +908,12 @@ public class UserAuthServiceImpl implements UserAuthService {
             User savedUser = userRepository.save(user);
             log.info("Minimal user created with email: {} and marked as profile incomplete", email);
 
+            try {
+                roundRobinService.autoAssignNewStudentLead(savedUser);
+            } catch (Exception e) {
+                log.warn("Auto-assign lead failed for OTP student {}: {}", email, e.getMessage());
+            }
+
             // Create user in Cognito with temporary password
             String tempPassword = UUID.randomUUID().toString() + "Aa1!";
             try {
@@ -1170,6 +1191,12 @@ public class UserAuthServiceImpl implements UserAuthService {
         // Save to local database
         User savedUser = userRepository.save(user);
         log.info("Google OAuth user created with email: {}, username: {}", email, username);
+
+        try {
+            roundRobinService.autoAssignNewStudentLead(savedUser);
+        } catch (Exception e) {
+            log.warn("Auto-assign lead failed for Google OAuth student {}: {}", email, e.getMessage());
+        }
 
         // Link to Cognito group
         ensureStudentGroupMembership(email);

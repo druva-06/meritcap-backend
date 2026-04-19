@@ -2,6 +2,8 @@ package com.meritcap.controller;
 
 import com.meritcap.DTOs.requestDTOs.lead.LeadFilterDto;
 import com.meritcap.DTOs.requestDTOs.lead.LeadRequestDto;
+import com.meritcap.DTOs.requestDTOs.lead.ReassignLeadRequestDto;
+import com.meritcap.DTOs.requestDTOs.lead.RoundRobinAssignRequestDto;
 import com.meritcap.DTOs.requestDTOs.lead.UpdateLeadRequestDto;
 import com.meritcap.DTOs.responseDTOs.lead.LeadPageResponseDto;
 import com.meritcap.DTOs.responseDTOs.lead.LeadResponseDto;
@@ -10,6 +12,7 @@ import com.meritcap.exception.NotFoundException;
 import com.meritcap.response.ApiFailureResponse;
 import com.meritcap.response.ApiSuccessResponse;
 import com.meritcap.service.LeadService;
+import com.meritcap.service.RoundRobinService;
 import com.meritcap.utils.ToMap;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,9 +37,11 @@ import java.util.Map;
 public class LeadController {
 
     private final LeadService leadService;
+    private final RoundRobinService roundRobinService;
 
-    public LeadController(LeadService leadService) {
+    public LeadController(LeadService leadService, RoundRobinService roundRobinService) {
         this.leadService = leadService;
+        this.roundRobinService = roundRobinService;
     }
 
     @PreAuthorize("hasAnyRole('ADMIN')")
@@ -243,6 +248,84 @@ public class LeadController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), "Error fetching status counts: " + e.getMessage(),
                             500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @PostMapping("/assign/round-robin")
+    @Operation(summary = "Assign leads via round-robin", description = "Distributes unassigned leads evenly across all active counselors in round-robin order")
+    public ResponseEntity<?> assignRoundRobin(@RequestBody(required = false) RoundRobinAssignRequestDto requestDto) {
+        log.info("Round-robin assignment request received");
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String adminEmail = getEmailFromAuthentication(auth);
+            List<Long> leadIds = requestDto != null ? requestDto.getLeadIds() : null;
+            var result = roundRobinService.assignLeadsRoundRobin(leadIds, adminEmail);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(result, "Round-robin assignment complete", 200));
+        } catch (Exception e) {
+            log.error("Error during round-robin assignment: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'COUNSELOR')")
+    @GetMapping("/counselor-workload")
+    @Operation(summary = "Get counselor workload", description = "Returns lead counts per counselor grouped by status")
+    public ResponseEntity<?> getCounselorWorkload() {
+        log.info("Counselor workload request received");
+        try {
+            var workload = roundRobinService.getCounselorWorkload();
+            return ResponseEntity.ok(new ApiSuccessResponse<>(workload, "Counselor workload fetched successfully", 200));
+        } catch (Exception e) {
+            log.error("Error fetching counselor workload: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @PutMapping("/{id}/reassign")
+    @Operation(summary = "Reassign a lead", description = "Reassigns a lead from its current counselor to a new one, logging the change")
+    public ResponseEntity<?> reassignLead(
+            @PathVariable Long id,
+            @RequestBody @Valid ReassignLeadRequestDto requestDto,
+            BindingResult bindingResult) {
+        log.info("Reassign lead request for ID: {}", id);
+
+        if (bindingResult.hasErrors()) {
+            Map<String, String> errors = ToMap.bindingResultToMap(bindingResult);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(errors, "Validation failed", 400));
+        }
+
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String byEmail = getEmailFromAuthentication(auth);
+            LeadResponseDto response = roundRobinService.reassignLead(id, requestDto.getNewCounselorId(), requestDto.getReason(), byEmail);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(response, "Lead reassigned successfully", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (Exception e) {
+            log.error("Error reassigning lead {}: {}", id, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @GetMapping("/{id}/assignment-history")
+    @Operation(summary = "Get lead assignment history", description = "Returns the full reassignment audit trail for a lead")
+    public ResponseEntity<?> getAssignmentHistory(@PathVariable Long id) {
+        log.info("Assignment history request for lead ID: {}", id);
+        try {
+            var history = roundRobinService.getLeadAssignmentHistory(id);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(history, "Assignment history fetched successfully", 200));
+        } catch (Exception e) {
+            log.error("Error fetching assignment history for lead {}: {}", id, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
     }
 
