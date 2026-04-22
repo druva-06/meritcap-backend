@@ -59,7 +59,8 @@ public class SecurityConfig {
             "/auth/refresh",
             "/actuator/health",
             "/swagger-ui/**",
-            "/v3/**"
+            "/v3/**",
+            "/public/**"
     };
 
     @Bean
