@@ -33,6 +33,8 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
 
     Long countByStatus(LeadStatus status);
 
+    Long countByAssignedToIsNotNull();
+
     @Modifying
     @Query("UPDATE Lead l SET l.assignedTo = null WHERE l.assignedTo.id = :userId")
     int clearAssignedToReferences(@Param("userId") Long userId);
@@ -40,4 +42,11 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     @Modifying
     @Query("UPDATE Lead l SET l.createdBy = null WHERE l.createdBy.id = :userId")
     int clearCreatedByReferences(@Param("userId") Long userId);
+
+    // Returns [campaignName, totalLeads, assignedLeads, duplicateLeads] per campaign
+    @Query("SELECT l.campaign, COUNT(l), " +
+           "SUM(CASE WHEN l.assignedTo IS NOT NULL THEN 1 ELSE 0 END), " +
+           "SUM(CASE WHEN l.isDuplicate = true THEN 1 ELSE 0 END) " +
+           "FROM Lead l WHERE l.campaign IN :names GROUP BY l.campaign")
+    List<Object[]> getCampaignLeadStats(@Param("names") List<String> names);
 }

@@ -20,4 +20,5 @@ public class LeadStatusCountDto {
     private Long coldLeads;
     private Long featureLeads;
     private Long contactedLeads;
+    private Long assignedLeads;
 }

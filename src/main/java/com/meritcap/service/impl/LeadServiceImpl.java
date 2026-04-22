@@ -210,10 +210,11 @@ public class LeadServiceImpl implements LeadService {
         Long coldLeads = leadRepository.countByStatus(LeadStatus.COLD);
         Long featureLeads = leadRepository.countByStatus(LeadStatus.FEATURE_LEAD);
         Long contactedLeads = leadRepository.countByStatus(LeadStatus.CONTACTED);
+        Long assignedLeads = leadRepository.countByAssignedToIsNotNull();
 
         log.info(
-                "Status counts - Total: {}, HOT: {}, IMMEDIATE_HOT: {}, WARM: {}, COLD: {}, FEATURE_LEAD: {}, CONTACTED: {}",
-                totalLeads, hotLeads, immediateHotLeads, warmLeads, coldLeads, featureLeads, contactedLeads);
+                "Status counts - Total: {}, HOT: {}, IMMEDIATE_HOT: {}, WARM: {}, COLD: {}, FEATURE_LEAD: {}, CONTACTED: {}, ASSIGNED: {}",
+                totalLeads, hotLeads, immediateHotLeads, warmLeads, coldLeads, featureLeads, contactedLeads, assignedLeads);
 
         return LeadStatusCountDto.builder()
                 .totalLeads(totalLeads)
@@ -223,6 +224,7 @@ public class LeadServiceImpl implements LeadService {
                 .coldLeads(coldLeads)
                 .featureLeads(featureLeads)
                 .contactedLeads(contactedLeads)
+                .assignedLeads(assignedLeads)
                 .build();
     }
 }
