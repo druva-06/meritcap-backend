@@ -27,6 +27,10 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
 
     List<Lead> findByAssignedToIsNull();
 
+    List<Lead> findByCampaignAndAssignedToIsNull(String campaign);
+
+    long countByAssignedToIsNull();
+
     boolean existsByEmail(String email);
 
     boolean existsByPhoneNumber(String phoneNumber);

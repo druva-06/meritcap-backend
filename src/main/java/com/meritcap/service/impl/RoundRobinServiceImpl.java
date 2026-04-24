@@ -2,6 +2,7 @@ package com.meritcap.service.impl;
 
 import com.meritcap.DTOs.responseDTOs.lead.AssignmentHistoryDto;
 import com.meritcap.DTOs.responseDTOs.lead.CounselorWorkloadDto;
+import com.meritcap.DTOs.responseDTOs.lead.DirectAssignResultDto;
 import com.meritcap.DTOs.responseDTOs.lead.LeadResponseDto;
 import com.meritcap.DTOs.responseDTOs.lead.RoundRobinAssignResultDto;
 import com.meritcap.enums.LeadStatus;
@@ -102,6 +103,58 @@ public class RoundRobinServiceImpl implements RoundRobinService {
 
         log.info("Round-robin complete: {} leads assigned across {} counselors", leadsToAssign.size(), n);
         return new RoundRobinAssignResultDto(leadsToAssign.size(), assignmentResult);
+    }
+
+    @Override
+    @Transactional
+    public DirectAssignResultDto directAssignLeads(
+            String campaignName, Long counselorId, int count, String sortBy, String adminEmail) {
+
+        User counselor = userRepository.findById(counselorId)
+                .orElseThrow(() -> new NotFoundException("Counselor not found: " + counselorId));
+        User assignedBy = userRepository.findByEmail(adminEmail);
+
+        List<Lead> candidates = (campaignName != null && !campaignName.isBlank())
+                ? leadRepository.findByCampaignAndAssignedToIsNull(campaignName)
+                : leadRepository.findByAssignedToIsNull();
+
+        if ("score".equals(sortBy)) {
+            candidates.sort(Comparator.comparingInt(
+                (Lead l) -> l.getScore() != null ? l.getScore() : 0).reversed());
+        } else {
+            candidates.sort(Comparator.comparing(
+                l -> l.getCreatedAt() != null ? l.getCreatedAt() : LocalDateTime.MIN));
+        }
+
+        int effectiveCount = Math.min(count, candidates.size());
+        List<Lead> toAssign = candidates.subList(0, effectiveCount);
+        String counselorFullName = counselor.getFirstName() + " " + counselor.getLastName();
+
+        for (Lead lead : toAssign) {
+            LeadAssignmentHistory history = new LeadAssignmentHistory();
+            history.setLead(lead);
+            history.setFromCounselor(lead.getAssignedTo());
+            history.setToCounselor(counselor);
+            history.setAssignedBy(assignedBy);
+            history.setReason("Direct assignment by admin");
+            assignmentHistoryRepository.save(history);
+
+            lead.setAssignedTo(counselor);
+            leadRepository.save(lead);
+        }
+
+        if (effectiveCount > 0) {
+            RoundRobinState state = roundRobinStateRepository.findByCounselorId(counselorId)
+                    .orElse(new RoundRobinState(counselor));
+            state.setLastAssignedAt(LocalDateTime.now());
+            state.setAssignmentCount(state.getAssignmentCount() + effectiveCount);
+            roundRobinStateRepository.save(state);
+        }
+
+        log.info("Direct assignment: {} leads assigned to counselor {} from campaign '{}'",
+                effectiveCount, counselorId, campaignName);
+
+        return new DirectAssignResultDto(effectiveCount, count, counselorFullName, campaignName);
     }
 
     @Override

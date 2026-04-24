@@ -1,5 +1,6 @@
 package com.meritcap.controller;
 
+import com.meritcap.DTOs.requestDTOs.lead.DirectAssignRequestDto;
 import com.meritcap.DTOs.requestDTOs.lead.LeadFilterDto;
 import com.meritcap.DTOs.requestDTOs.lead.LeadRequestDto;
 import com.meritcap.DTOs.requestDTOs.lead.ReassignLeadRequestDto;
@@ -264,6 +265,43 @@ public class LeadController {
             return ResponseEntity.ok(new ApiSuccessResponse<>(result, "Round-robin assignment complete", 200));
         } catch (Exception e) {
             log.error("Error during round-robin assignment: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
+        }
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @PostMapping("/assign/direct")
+    @Operation(summary = "Direct assign leads to one counselor",
+               description = "Assigns N unassigned leads (optionally filtered by campaign) all to a single counselor")
+    public ResponseEntity<?> directAssignLeads(
+            @RequestBody @Valid DirectAssignRequestDto requestDto,
+            BindingResult bindingResult) {
+        log.info("Direct assign request: campaign='{}', counselorId={}, count={}",
+                requestDto.getCampaignName(), requestDto.getCounselorId(), requestDto.getCount());
+
+        if (bindingResult.hasErrors()) {
+            Map<String, String> errors = ToMap.bindingResultToMap(bindingResult);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiFailureResponse<>(errors, "Validation failed", 400));
+        }
+
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String adminEmail = getEmailFromAuthentication(auth);
+            String sortBy = requestDto.getSortBy() != null ? requestDto.getSortBy() : "createdAt";
+            var result = roundRobinService.directAssignLeads(
+                    requestDto.getCampaignName(),
+                    requestDto.getCounselorId(),
+                    requestDto.getCount(),
+                    sortBy,
+                    adminEmail);
+            return ResponseEntity.ok(new ApiSuccessResponse<>(result, "Direct assignment complete", 200));
+        } catch (NotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 404));
+        } catch (Exception e) {
+            log.error("Error during direct assignment: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ApiFailureResponse<>(new ArrayList<>(), e.getMessage(), 500));
         }
